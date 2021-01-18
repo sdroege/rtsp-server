@@ -78,6 +78,10 @@ pub struct Client {
 }
 
 impl Controller<Client> {
+    pub fn client_id(&self) -> client::Id {
+        self.context.id.clone()
+    }
+
     pub(crate) fn from_server_controller(
         controller: &Controller<Server>,
         client_id: client::Id,
@@ -99,11 +103,30 @@ impl Controller<Client> {
             context: Client { id: client_id },
         }
     }
-}
 
-impl Controller<Client> {
-    pub fn client_id(&self) -> client::Id {
-        self.context.id.clone()
+    pub async fn find_media_factory(
+        &mut self,
+    ) -> Result<media_factory::Controller<media_factory::controller::Client>, crate::error::Error>
+    {
+        let (sender, receiver) = oneshot::channel();
+
+        if let Err(_) = self
+            .sender
+            .send(
+                ClientMessage::FindMediaFactory {
+                    client_id: self.context.id,
+                    ret: sender,
+                }
+                .into(),
+            )
+            .await
+        {
+            return Err(crate::error::InternalServerError.into());
+        }
+
+        receiver
+            .await
+            .map_err(|_| crate::error::InternalServerError)?
     }
 
     pub async fn options(

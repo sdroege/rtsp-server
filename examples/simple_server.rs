@@ -1195,10 +1195,8 @@ impl Client {
             };
 
             let (mut media, stream_id, session_id) =
-                if let Some((media, session_id)) = media_and_session_id {
-                    let mut media_factory = handle
-                        .find_media_factory_for_uri(uri.clone(), extra_data.clone())
-                        .await?;
+                if let Some((mut media, session_id)) = media_and_session_id {
+                    let mut media_factory = media.find_media_factory().await?;
                     let (_, stream_id, _) = media_factory
                         .find_presentation_uri(uri.clone(), extra_data.clone())
                         .await?;
@@ -1318,9 +1316,7 @@ impl Client {
                 handle.find_server_session_media(&session_id).await?
             };
 
-            let mut media_factory = handle
-                .find_media_factory_for_uri(uri.clone(), extra_data.clone())
-                .await?;
+            let mut media_factory = media.find_media_factory().await?;
             let (_presentation_uri, stream_id, _) = media_factory
                 .find_presentation_uri(uri.clone(), extra_data.clone())
                 .await?;
@@ -1398,9 +1394,7 @@ impl Client {
                 handle.find_server_session_media(&session_id).await?
             };
 
-            let mut media_factory = handle
-                .find_media_factory_for_uri(uri.clone(), extra_data.clone())
-                .await?;
+            let mut media_factory = media.find_media_factory().await?;
             let (_presentation_uri, stream_id, _) = media_factory
                 .find_presentation_uri(uri.clone(), extra_data.clone())
                 .await?;
@@ -1461,9 +1455,7 @@ impl Client {
                 handle.find_server_session_media(&session_id).await?
             };
 
-            let mut media_factory = handle
-                .find_media_factory_for_uri(uri.clone(), extra_data.clone())
-                .await?;
+            let mut media_factory = media.find_media_factory().await?;
             let (_presentation_uri, stream_id, _) = media_factory
                 .find_presentation_uri(uri.clone(), extra_data.clone())
                 .await?;

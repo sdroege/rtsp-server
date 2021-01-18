@@ -216,6 +216,19 @@ async fn task_fn<M: Media>(
                 }
             },
             MediaMessage::Controller(ControllerMessage::Client(msg)) => match msg {
+                ClientMessage::FindMediaFactory { client_id, ret } => {
+                    trace!(
+                        "Media {}: Client {} asking for media factory",
+                        ctx.id,
+                        client_id,
+                    );
+
+                    let _ = ret.send(Ok(media_factory::Controller::<
+                        media_factory::controller::Client,
+                    >::from_media_controller(
+                        &ctx.media_factory_controller, client_id
+                    )));
+                }
                 ClientMessage::Options {
                     client_id,
                     supported,

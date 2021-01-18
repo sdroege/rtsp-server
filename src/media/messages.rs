@@ -28,6 +28,16 @@ impl From<ServerMessage> for ControllerMessage {
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
 pub(super) enum ClientMessage {
+    FindMediaFactory {
+        client_id: client::Id,
+        #[derivative(Debug = "ignore")]
+        ret: oneshot::Sender<
+            Result<
+                media_factory::Controller<media_factory::controller::Client>,
+                crate::error::Error,
+            >,
+        >,
+    },
     Options {
         client_id: client::Id,
         supported: rtsp_types::headers::Supported,

@@ -46,6 +46,17 @@ impl Controller<Client> {
         }
     }
 
+    pub(crate) fn from_media_controller(
+        controller: &Controller<Media>,
+        client_id: client::Id,
+    ) -> Self {
+        Controller {
+            id: controller.id,
+            sender: controller.sender.clone(),
+            context: Client { id: client_id },
+        }
+    }
+
     pub fn client_id(&self) -> client::Id {
         self.context.id
     }

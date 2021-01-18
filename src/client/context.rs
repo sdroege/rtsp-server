@@ -87,6 +87,7 @@ pub struct Context<C: Client + ?Sized> {
 /// Client handle to a media.
 pub struct MediaHandle<C: Client + ?Sized> {
     controller: media::Controller<media::controller::Client>,
+    sender: mpsc::Sender<ControllerMessage>,
     handle: Handle<C>,
 }
 
@@ -94,6 +95,7 @@ impl<C: Client + ?Sized> Clone for MediaHandle<C> {
     fn clone(&self) -> Self {
         Self {
             controller: self.controller.clone(),
+            sender: self.sender.clone(),
             handle: self.handle.clone(),
         }
     }
@@ -102,6 +104,42 @@ impl<C: Client + ?Sized> Clone for MediaHandle<C> {
 impl<C: Client + ?Sized> MediaHandle<C> {
     pub fn media_id(&self) -> media::Id {
         self.controller.media_id()
+    }
+
+    pub async fn find_media_factory(
+        &mut self,
+    ) -> Result<MediaFactoryHandle<C>, crate::error::Error> {
+        trace!(
+            "Client {}: Getting media factory for media {}",
+            self.controller.client_id(),
+            self.controller.media_id(),
+        );
+
+        match self.controller.find_media_factory().await {
+            Ok(media_factory_controller) => {
+                trace!(
+                    "Client {}: Got media factory {} for media {}",
+                    self.controller.client_id(),
+                    media_factory_controller.media_factory_id(),
+                    self.controller.media_id(),
+                );
+
+                Ok(MediaFactoryHandle {
+                    controller: media_factory_controller,
+                    sender: self.sender.clone(),
+                    handle: self.handle.clone(),
+                })
+            }
+            Err(err) => {
+                trace!(
+                    "Client {}: Got media factory for media {}: Err({:?})",
+                    self.controller.client_id(),
+                    self.controller.media_id(),
+                    err,
+                );
+                Err(err)
+            }
+        }
     }
 
     pub async fn options(
@@ -503,6 +541,7 @@ impl<C: Client + ?Sized> MediaFactoryHandle<C> {
         Ok((
             MediaHandle {
                 controller: media_controller,
+                sender: self.sender.clone(),
                 handle: self.handle.clone(),
             },
             extra_data,
@@ -817,6 +856,7 @@ impl<C: Client + ?Sized> Context<C> {
                     (
                         MediaHandle {
                             controller: c.0.clone(),
+                            sender: self.controller_sender.clone(),
                             handle: self.handle(),
                         },
                         session_id,
@@ -856,6 +896,7 @@ impl<C: Client + ?Sized> Context<C> {
             );
             self.session_medias.get(&media_id).map(|c| MediaHandle {
                 controller: c.0.clone(),
+                sender: self.controller_sender.clone(),
                 handle: self.handle(),
             })
         } else {
@@ -932,6 +973,7 @@ impl<C: Client + ?Sized> Context<C> {
                     let client_handle = ctx.handle();
                     MediaHandle {
                         controller: media_controller,
+                        sender: ctx.controller_sender.clone(),
                         handle: client_handle,
                     }
                 })
