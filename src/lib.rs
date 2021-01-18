@@ -1,3 +1,4 @@
+pub mod basic_client;
 pub mod body;
 pub mod channel;
 pub mod client;
