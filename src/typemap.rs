@@ -4,42 +4,62 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct TypeMap {
-    map: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
+    map: Option<Arc<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>,
 }
 
 impl Default for TypeMap {
     fn default() -> Self {
-        TypeMap {
-            map: HashMap::new(),
-        }
+        TypeMap { map: None }
     }
 }
 
 impl TypeMap {
     pub fn get<T: Send + Sync + 'static>(&self) -> Option<&T> {
         self.map
-            .get(&TypeId::of::<T>())
+            .as_ref()
+            .and_then(|map| map.get(&TypeId::of::<T>()))
             .and_then(|v| v.downcast_ref())
     }
 
     pub fn contains<T: Send + Sync + 'static>(&self) -> bool {
-        self.map.contains_key(&TypeId::of::<T>())
+        self.map
+            .as_ref()
+            .map(|map| map.contains_key(&TypeId::of::<T>()))
+            .unwrap_or(false)
     }
 
     pub fn insert<T: Send + Sync + 'static>(&mut self, v: T) {
-        self.map.insert(TypeId::of::<T>(), Arc::new(v));
+        if self.map.is_none() {
+            self.map = Some(Arc::new(HashMap::new()));
+        }
+
+        let map = self.map.as_mut().expect("no map");
+
+        Arc::make_mut(map).insert(TypeId::of::<T>(), Arc::new(v));
     }
 
     pub fn remove<T: Send + Sync + 'static>(&mut self) {
-        self.map.remove(&TypeId::of::<T>());
+        if let Some(ref mut map) = self.map {
+            Arc::make_mut(map).remove(&TypeId::of::<T>());
+        }
     }
 
     pub fn clear(&mut self) {
-        self.map.clear();
+        self.map = None;
     }
 
     pub fn extend(&mut self, other: &Self) {
-        self.map
-            .extend(other.map.iter().map(|(tid, item)| (*tid, item.clone())));
+        let other_map = match other.map {
+            None => return,
+            Some(ref other) => other,
+        };
+
+        if self.map.is_none() {
+            self.map = Some(Arc::new(HashMap::new()));
+        }
+
+        let map = self.map.as_mut().expect("no map");
+
+        Arc::make_mut(map).extend(other_map.iter().map(|(tid, item)| (*tid, item.clone())));
     }
 }
