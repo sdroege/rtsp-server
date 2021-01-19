@@ -151,5 +151,5 @@ pub trait MessageHandler<Msg, Token> {
     fn handle_message(&mut self, ctx: &mut Self::Context, token: &Token, msg: Msg);
 
     /// Called when the registered stream is finished.
-    fn finished(&mut self, ctx: &mut Self::Context, token: &Token) {}
+    fn finished(&mut self, _ctx: &mut Self::Context, _token: &Token) {}
 }

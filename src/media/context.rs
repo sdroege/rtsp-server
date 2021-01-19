@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::pin::Pin;
 
 use futures::prelude::*;
+use futures::stream::FuturesUnordered;
 
 use async_std::task;
 
@@ -190,6 +191,10 @@ impl<M: Media + ?Sized> Context<M> {
         }
     }
 
+    pub fn list_active_sessions(&self) -> Vec<server::SessionId> {
+        self.sessions.keys().cloned().collect()
+    }
+
     pub fn find_session_client(&self, session_id: &server::SessionId) -> Option<ClientHandle<M>> {
         if let Some((client_id, _)) = self.sessions.get(session_id) {
             if let Some(client_id) = client_id {
@@ -252,6 +257,57 @@ impl<M: Media + ?Sized> Context<M> {
                     rtsp_types::StatusCode::SessionNotFound,
                 )))
             })
+        }
+    }
+
+    pub fn keep_alive(&self) -> impl Future<Output = Result<(), crate::error::Error>> + Send {
+        trace!("Media {}: Keep-alive for all sessions", self.id,);
+
+        let mut futs = FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::new();
+        for (_, (_, server_controller)) in &self.sessions {
+            let mut server_controller = server_controller.clone();
+            futs.push(Box::pin({
+                async move {
+                    let _ = server_controller.keep_alive_session().await;
+                }
+            }));
+        }
+
+        async move {
+            while let Some(_) = futs.next().await {}
+            Ok(())
+        }
+    }
+
+    pub fn play_notify(
+        &mut self,
+        notify: crate::media::PlayNotifyMessage,
+    ) -> impl Future<Output = Result<(), crate::error::Error>> + Send {
+        trace!(
+            "Media {}: Play notify {:?} for all sessions",
+            self.id,
+            notify,
+        );
+
+        let mut futs = FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::new();
+        for (session_id, (client_id, _)) in &self.sessions {
+            if let Some(client_id) = client_id {
+                if let Some(client_controller) = self.session_clients.get(client_id) {
+                    let mut client_controller = client_controller.clone();
+                    let session_id = session_id.clone();
+                    let notify = notify.clone();
+                    futs.push(Box::pin({
+                        async move {
+                            let _ = client_controller.play_notify(session_id, notify).await;
+                        }
+                    }));
+                }
+            }
+        }
+
+        async move {
+            while let Some(_) = futs.next().await {}
+            Ok(())
         }
     }
 
@@ -363,6 +419,13 @@ impl<M: Media + ?Sized> Handle<M> {
         self.id
     }
 
+    pub async fn list_active_sessions(&mut self) -> Vec<server::SessionId> {
+        self.run(move |_, ctx| ctx.list_active_sessions())
+            .await
+            .ok()
+            .unwrap_or_else(|| Vec::new())
+    }
+
     pub async fn find_session_client(
         &mut self,
         session_id: &server::SessionId,
@@ -391,6 +454,21 @@ impl<M: Media + ?Sized> Handle<M> {
     ) -> Result<(), crate::error::Error> {
         let session_id = session_id.clone();
         self.spawn(move |_, ctx| ctx.session_keep_alive(&session_id))
+            .await
+            .map_err(|_| crate::error::Error::from(crate::error::InternalServerError))?
+    }
+
+    pub async fn keep_alive(&mut self) -> Result<(), crate::error::Error> {
+        self.spawn(move |_, ctx| ctx.keep_alive())
+            .await
+            .map_err(|_| crate::error::Error::from(crate::error::InternalServerError))?
+    }
+
+    pub async fn play_notify(
+        &mut self,
+        notify: crate::media::PlayNotifyMessage,
+    ) -> Result<(), crate::error::Error> {
+        self.spawn(move |_, ctx| ctx.play_notify(notify))
             .await
             .map_err(|_| crate::error::Error::from(crate::error::InternalServerError))?
     }

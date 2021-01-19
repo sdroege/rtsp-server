@@ -178,7 +178,7 @@ pub(super) enum MediaMessage<M: super::Media + ?Sized> {
     ),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PlayNotifyMessage {
     EndOfStream {
         range: rtsp_types::headers::Range,
