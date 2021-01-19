@@ -9,6 +9,8 @@ use crate::media;
 use crate::server;
 use crate::typemap::TypeMap;
 
+pub mod basic_client;
+
 mod context;
 pub use context::*;
 

@@ -1,5 +1,5 @@
-use rtsp_server::basic_client;
 use rtsp_server::body::Body;
+use rtsp_server::client::basic_client;
 use rtsp_server::client::Context;
 use rtsp_server::error::Error;
 use rtsp_server::server::Server;
