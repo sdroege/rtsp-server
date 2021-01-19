@@ -525,10 +525,23 @@ impl Client {
     fn handle_get_parameter(
         &mut self,
         _ctx: &mut client::Context<Self>,
-        _req: client::OriginalRequest,
+        req: client::OriginalRequest,
     ) -> Pin<Box<dyn Future<Output = Result<rtsp_types::Response<Body>, error::Error>> + Send>>
     {
         Box::pin(async move {
+            // Empty keep-alive GET_PARAMETER. The session was already kept alive by the Context
+            // before passing the request here.
+            if req.body().is_empty() || req.body().as_ref()[0] == 0 {
+                let mut resp =
+                    rtsp_types::Response::builder(req.version(), rtsp_types::StatusCode::Ok)
+                        .build(Body::default());
+                if let Some(session) = req.header(&rtsp_types::headers::SESSION) {
+                    resp.insert_header(rtsp_types::headers::SESSION, session.as_str());
+                }
+
+                return Ok(resp);
+            }
+
             Err(error::ErrorStatus::from(rtsp_types::StatusCode::ParameterNotUnderstood).into())
         })
     }
@@ -536,10 +549,23 @@ impl Client {
     fn handle_set_parameter(
         &mut self,
         _ctx: &mut client::Context<Self>,
-        _req: client::OriginalRequest,
+        req: client::OriginalRequest,
     ) -> Pin<Box<dyn Future<Output = Result<rtsp_types::Response<Body>, error::Error>> + Send>>
     {
         Box::pin(async move {
+            // Empty keep-alive SET_PARAMETER. The session was already kept alive by the Context
+            // before passing the request here.
+            if req.body().is_empty() || req.body().as_ref()[0] == 0 {
+                let mut resp =
+                    rtsp_types::Response::builder(req.version(), rtsp_types::StatusCode::Ok)
+                        .build(Body::default());
+                if let Some(session) = req.header(&rtsp_types::headers::SESSION) {
+                    resp.insert_header(rtsp_types::headers::SESSION, session.as_str());
+                }
+
+                return Ok(resp);
+            }
+
             Err(error::ErrorStatus::from(rtsp_types::StatusCode::ParameterNotUnderstood).into())
         })
     }
