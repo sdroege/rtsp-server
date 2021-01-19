@@ -3,6 +3,7 @@ use rtsp_server::client::basic_client;
 use rtsp_server::client::Context;
 use rtsp_server::error::Error;
 use rtsp_server::server::Server;
+use rtsp_server::stream_handler::MessageHandler;
 
 use gst::prelude::*;
 
@@ -15,7 +16,7 @@ use futures::executor::block_on;
 use futures::lock::Mutex;
 use futures::prelude::*;
 
-use log::warn;
+use log::{error, warn};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum MediaState {
@@ -75,8 +76,64 @@ impl rtsp_server::client::DataReceiver for DummyDataReceiver {
     fn handle_data(&mut self, _data: rtsp_types::Data<Body>) {}
 }
 
+impl MessageHandler<gst::Message, ()> for Media {
+    type Context = rtsp_server::media::Context<Self>;
+
+    fn handle_message(&mut self, ctx: &mut Self::Context, _token: &(), msg: gst::Message) {
+        use gst::MessageView;
+
+        match msg.view() {
+            MessageView::Error(err) => {
+                error!(
+                    "Error from {:?}: {} ({:?})",
+                    err.get_src().map(|s| s.get_path_string()),
+                    err.get_error(),
+                    err.get_debug()
+                );
+                ctx.error();
+            }
+            MessageView::Eos(_) => {
+                // TODO: Need to provide actual range and end rtptimes, etc
+                // FIXME: Only do this for RTSP 2.0
+                let notify = rtsp_server::media::PlayNotifyMessage::EndOfStream {
+                    range: rtsp_types::headers::Range::Npt(rtsp_types::headers::NptRange::FromTo(
+                        rtsp_types::headers::NptTime::Seconds(0, None),
+                        rtsp_types::headers::NptTime::Now,
+                    )),
+                    rtp_info: rtsp_types::headers::RtpInfos::V2(Vec::new()),
+                    extra_data: Default::default(),
+                };
+                let fut = ctx.play_notify(notify);
+                task::spawn(async move {
+                    let _ = fut.await;
+                });
+            }
+            MessageView::ClockLost(_) => {
+                self.pipeline.call_async(|pipeline| {
+                    let _ = pipeline.set_state(gst::State::Paused);
+                    let _ = pipeline.set_state(gst::State::Playing);
+                });
+            }
+            MessageView::Buffering(_) => {
+                // TODO
+            }
+            MessageView::Latency(_) => {
+                self.pipeline.call_async(|pipeline| {
+                    let _ = pipeline.recalculate_latency();
+                });
+            }
+            _ => (),
+        }
+    }
+}
+
 impl rtsp_server::media::Media for Media {
     const AUTOMATIC_IDLE: bool = true;
+
+    fn startup(&mut self, ctx: &mut rtsp_server::media::Context<Self>) {
+        ctx.register_stream((), self.pipeline.get_bus().expect("No bus").stream())
+            .unwrap();
+    }
 
     fn options(
         &mut self,
