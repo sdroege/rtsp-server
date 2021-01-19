@@ -190,10 +190,7 @@ impl<M: Media + ?Sized> Context<M> {
         }
     }
 
-    pub fn find_session_client(
-        &self,
-        session_id: &server::SessionId,
-    ) -> Option<client::Controller<client::controller::Media>> {
+    pub fn find_session_client(&self, session_id: &server::SessionId) -> Option<ClientHandle<M>> {
         if let Some((client_id, _)) = self.sessions.get(session_id) {
             if let Some(client_id) = client_id {
                 trace!(
@@ -202,7 +199,10 @@ impl<M: Media + ?Sized> Context<M> {
                     session_id,
                     client_id
                 );
-                self.session_clients.get(&client_id).map(|c| c.clone())
+                self.session_clients.get(&client_id).map(|c| ClientHandle {
+                    handle: self.handle(),
+                    controller: c.clone(),
+                })
             } else {
                 trace!(
                     "Media {}: Found session {} without client",
@@ -366,7 +366,7 @@ impl<M: Media + ?Sized> Handle<M> {
     pub async fn find_session_client(
         &mut self,
         session_id: &server::SessionId,
-    ) -> Option<client::Controller<client::controller::Media>> {
+    ) -> Option<ClientHandle<M>> {
         let session_id = session_id.clone();
         self.run(move |_, ctx| ctx.find_session_client(&session_id))
             .await
