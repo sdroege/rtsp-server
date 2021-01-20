@@ -1,8 +1,9 @@
 use std::any::{Any, TypeId};
+use std::sync::Arc;
 use std::{error, fmt, ops};
 
-#[derive(Debug)]
-pub struct Error(Box<dyn ServerError>);
+#[derive(Debug, Clone)]
+pub struct Error(Arc<dyn ServerError>);
 
 impl ops::Deref for Error {
     type Target = dyn ServerError;
@@ -26,7 +27,7 @@ impl Error {
     }
 }
 
-pub trait ServerError: Any + std::error::Error + Send {
+pub trait ServerError: Any + std::error::Error + Send + Sync {
     fn status_code(&self) -> rtsp_types::StatusCode;
 }
 
@@ -44,7 +45,7 @@ impl error::Error for Error {
 
 impl<T: ServerError + 'static> From<T> for Error {
     fn from(v: T) -> Error {
-        Error(Box::new(v))
+        Error(Arc::new(v))
     }
 }
 
