@@ -233,6 +233,7 @@ impl Client {
             })?;
 
             let mut extra_data = handle.default_extra_data_for_request(&req);
+            let mut pipelined_request_sender = None;
             let media_and_session_id = if let Some(session) = session {
                 let session_id = server::SessionId::from(session.as_ref());
                 if let Some(media) = handle.find_session_media(&session_id).await {
@@ -244,9 +245,18 @@ impl Client {
                     ))
                 }
             } else if let Some(pipelined_requests) = pipelined_requests {
-                handle
+                let pipelined_request = handle
                     .find_media_for_pipelined_request(*pipelined_requests)
-                    .await
+                    .await;
+
+                use either::Either::{Left, Right};
+                match pipelined_request {
+                    Left(sender) => {
+                        pipelined_request_sender = Some(sender);
+                        None
+                    }
+                    Right(res) => Some(res?),
+                }
             } else {
                 None
             };
@@ -265,24 +275,44 @@ impl Client {
 
                 (media, stream_id, session_id)
             } else {
-                let mut media_factory = handle
-                    .find_media_factory_for_uri(uri.clone(), extra_data.clone())
-                    .await?;
-                let (presentation_uri, stream_id, _) = media_factory
-                    .find_presentation_uri(uri.clone(), extra_data.clone())
-                    .await?;
+                let create_session_fut = async {
+                    let mut media_factory = handle
+                        .find_media_factory_for_uri(uri.clone(), extra_data.clone())
+                        .await?;
+                    let (presentation_uri, stream_id, _) = media_factory
+                        .find_presentation_uri(uri.clone(), extra_data.clone())
+                        .await?;
 
-                let stream_id = stream_id.ok_or_else(|| {
-                    error::Error::from(error::ErrorStatus::from(rtsp_types::StatusCode::NotFound))
-                })?;
+                    let stream_id = stream_id.ok_or_else(|| {
+                        error::Error::from(error::ErrorStatus::from(
+                            rtsp_types::StatusCode::NotFound,
+                        ))
+                    })?;
 
-                let (media, _) = media_factory
-                    .create_media(uri.clone(), extra_data.clone())
-                    .await?;
-                let session_id = handle
-                    .create_session(presentation_uri, pipelined_requests.map(|p| *p), &media)
-                    .await?;
-                (media, stream_id, session_id)
+                    let (media, _) = media_factory
+                        .create_media(uri.clone(), extra_data.clone())
+                        .await?;
+                    let session_id = handle
+                        .create_session(presentation_uri, pipelined_requests.map(|p| *p), &media)
+                        .await?;
+
+                    Ok::<_, crate::error::Error>((media, stream_id, session_id))
+                };
+
+                match create_session_fut.await {
+                    Ok(res) => {
+                        if let Some(pipelined_request_sender) = pipelined_request_sender {
+                            let _ = pipelined_request_sender.send(Ok(()));
+                        }
+                        res
+                    }
+                    Err(err) => {
+                        if let Some(pipelined_request_sender) = pipelined_request_sender {
+                            let _ = pipelined_request_sender.send(Err(err.clone()));
+                        }
+                        return Err(err);
+                    }
+                }
             };
 
             extra_data.insert(session_id.clone());

@@ -22,3 +22,4 @@ rand = "0.7"
 uuid = { version = "0.8", features = ["v1", "v4"] }
 once_cell = "1"
 derivative = "2"
+either = "1"

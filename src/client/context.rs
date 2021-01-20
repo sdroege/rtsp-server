@@ -38,6 +38,11 @@ impl<C: Client + ?Sized> Clone for Handle<C> {
     }
 }
 
+pub(super) enum PipelinedRequest<C: Client + ?Sized> {
+    Waiting(Vec<oneshot::Sender<Result<(MediaHandle<C>, server::SessionId), crate::error::Error>>>),
+    Registered(server::SessionId),
+}
+
 pub struct Context<C: Client + ?Sized> {
     pub(super) id: Id,
 
@@ -69,7 +74,7 @@ pub struct Context<C: Client + ?Sized> {
     pub(super) sessions: HashMap<server::SessionId, (media::Id, Option<u32>, Vec<u8>)>,
 
     /// Pipelined requests of this client.
-    pub(super) pipelined_requests: HashMap<u32, server::SessionId>,
+    pub(super) pipelined_requests: HashMap<u32, PipelinedRequest<C>>,
 
     /// Currently available session medias.
     pub(super) session_medias: HashMap<
@@ -836,16 +841,132 @@ impl<C: Client + ?Sized> Context<C> {
         Box::pin(fut)
     }
 
-    /// Checks if a session was already created for the given pipelined request and returns its
-    /// handle and the corresponding session id.
+    /// Registers a pipelined request.
+    ///
+    /// This reserves a session ID for this pipelined request.
+    ///
+    /// On the first call the returned future will immediately resolve and allows the caller to
+    /// set up a media and actually create the session properly. On errors before creating the
+    /// session, the caller should also report the error to the returned channel, or otherwise an
+    /// internal server error will be assumed for other requests for the same pipelined request.
+    ///
+    /// All future calls will wait for the first caller to succeed creating a session or failing to
+    /// do so, or immediately resolve with the already created session.
+    // TODO: impl Future
     pub fn find_media_for_pipelined_request(
-        &self,
+        &mut self,
         pipelined_request: u32,
-    ) -> Option<(MediaHandle<C>, server::SessionId)> {
-        if let Some(session_id) = self.pipelined_requests.get(&pipelined_request) {
-            if let Some((media_id, _, _)) = self.sessions.get(session_id) {
-                let session_id = session_id.clone();
-                self.session_medias.get(&media_id).map(move |c| {
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = either::Either<
+                        oneshot::Sender<Result<(), crate::error::Error>>,
+                        Result<(MediaHandle<C>, server::SessionId), crate::error::Error>,
+                    >,
+                > + Send,
+        >,
+    > {
+        match self.pipelined_requests.get_mut(&pipelined_request) {
+            None => {
+                trace!(
+                    "Client {}: Did not find media for pipelined request {}",
+                    self.id,
+                    pipelined_request
+                );
+
+                self.pipelined_requests
+                    .insert(pipelined_request, PipelinedRequest::Waiting(Vec::new()));
+
+                let (sender, receiver) = oneshot::channel();
+
+                let mut handle = self.handle();
+                task::spawn(async move {
+                    let res = receiver.await;
+
+                    let _ = handle
+                        .run(move |_client, ctx| {
+                            trace!(
+                                "Client {}: Pipelined request {} resolved: {:?}",
+                                ctx.id,
+                                pipelined_request,
+                                res,
+                            );
+
+                            let res = res
+                                .unwrap_or_else(|_| Err(crate::error::InternalServerError.into()));
+
+                            match ctx.pipelined_requests.remove(&pipelined_request) {
+                                Some(PipelinedRequest::Waiting(waiters)) => {
+                                    let res = match res {
+                                        Ok(()) => {
+                                            // Can't really happen unless the caller does things wrong:
+                                            // the waiters would've been woken up from
+                                            // create_session() already.
+                                            Err(crate::error::InternalServerError.into())
+                                        }
+                                        Err(err) => Err(err),
+                                    };
+
+                                    for waiter in waiters {
+                                        let _ = waiter.send(res.clone());
+                                    }
+                                }
+                                Some(PipelinedRequest::Registered(_)) => {
+                                    // Was successfully registered before so nothing to do here
+                                }
+                                _ => unreachable!(),
+                            }
+                        })
+                        .await;
+                });
+
+                return Box::pin(async move { either::Either::Left(sender) });
+            }
+            Some(PipelinedRequest::Waiting(ref mut waiters)) => {
+                trace!(
+                    "Client {}: Found pending pipelined request {}, waiting for result",
+                    self.id,
+                    pipelined_request
+                );
+
+                let (sender, receiver) = oneshot::channel();
+                waiters.push(sender);
+
+                let id = self.id;
+                return Box::pin(async move {
+                    let res = receiver
+                        .await
+                        .map_err(|_| crate::error::InternalServerError.into())
+                        .and_then(|res| res);
+
+                    match res {
+                        Ok((ref media_handle, ref session_id)) => {
+                            trace!(
+                                "Client {}: Found media {} for pipelined request {} with session id {}",
+                                id,
+                                media_handle.media_id(),
+                                pipelined_request,
+                                session_id
+                            );
+                        }
+                        Err(ref err) => {
+                            trace!(
+                                "Client {}: Did not find media for pipelined request {}: {:?}",
+                                id,
+                                pipelined_request,
+                                err,
+                            );
+                        }
+                    }
+
+                    either::Either::Right(res)
+                });
+            }
+            Some(PipelinedRequest::Registered(session_id)) => {
+                if let Some((media_id, _, _)) = self.sessions.get(session_id) {
+                    let session_id = session_id.clone();
+
+                    let (media, _) = self.session_medias.get(&media_id).expect("media not found");
                     trace!(
                         "Client {}: Found media {} for pipelined request {} with session id {}",
                         self.id,
@@ -853,30 +974,23 @@ impl<C: Client + ?Sized> Context<C> {
                         pipelined_request,
                         session_id
                     );
-                    (
-                        MediaHandle {
-                            controller: c.0.clone(),
-                            sender: self.controller_sender.clone(),
-                            handle: self.handle(),
-                        },
-                        session_id,
-                    )
-                })
-            } else {
-                trace!(
-                    "Client {}: Did not find media for pipelined request {}",
-                    self.id,
-                    pipelined_request
-                );
-                None
+
+                    let media_handle = MediaHandle {
+                        controller: media.clone(),
+                        sender: self.controller_sender.clone(),
+                        handle: self.handle(),
+                    };
+
+                    return Box::pin(async move {
+                        either::Either::Right(Ok((media_handle, session_id)))
+                    });
+                } else {
+                    panic!(
+                        "Client {}: Did not find media for pipelined request {}",
+                        self.id, pipelined_request
+                    );
+                }
             }
-        } else {
-            trace!(
-                "Client {}: Did not find media for pipelined request {}",
-                self.id,
-                pipelined_request
-            );
-            None
         }
     }
 
@@ -995,8 +1109,6 @@ impl<C: Client + ?Sized> Context<C> {
         pipelined_request: Option<u32>,
         media_handle: &MediaHandle<C>,
     ) -> impl Future<Output = Result<server::SessionId, crate::error::Error>> + Send {
-        use future::Either;
-
         let session_id = server::SessionId::new();
         let media_id = media_handle.media_id();
 
@@ -1009,19 +1121,13 @@ impl<C: Client + ?Sized> Context<C> {
         );
 
         if let Some(pipelined_request) = pipelined_request {
-            if let Some(existing_session_id) = self.pipelined_requests.get(&pipelined_request) {
-                trace!(
+            if let Some(PipelinedRequest::Registered(existing_session_id)) =
+                self.pipelined_requests.get(&pipelined_request)
+            {
+                panic!(
                     "Client {}: Existing session {} found for pipelined request {}",
-                    self.id,
-                    existing_session_id,
-                    pipelined_request
+                    self.id, existing_session_id, pipelined_request
                 );
-                let existing_session_id = existing_session_id.clone();
-                return Either::Left(async move { Ok(existing_session_id) });
-            } else {
-                assert!(self.pipelined_requests.contains_key(&pipelined_request));
-                self.pipelined_requests
-                    .insert(pipelined_request, session_id.clone());
             }
         }
 
@@ -1042,6 +1148,7 @@ impl<C: Client + ?Sized> Context<C> {
             );
 
         let mut client_handle = self.handle();
+        let media_handle = media_handle.clone();
         let mut server_controller = self.server_controller.clone();
         let fut = async move {
             let res = server_controller
@@ -1055,6 +1162,29 @@ impl<C: Client + ?Sized> Context<C> {
                         server_controller.client_id(),
                         session_id
                     );
+
+                    if let Some(pipelined_request) = pipelined_request {
+                        let session_id = session_id.clone();
+                        let _ = client_handle.run(move |_client, ctx| {
+                            match ctx.pipelined_requests.remove(&pipelined_request) {
+                                Some(PipelinedRequest::Registered(existing_session_id)) => {
+                                    panic!(
+                                        "Client {}: Existing session {} found for pipelined request {}",
+                                        ctx.id, existing_session_id, pipelined_request
+                                        );
+                                },
+                                Some(PipelinedRequest::Waiting(waiters)) => {
+                                    ctx.pipelined_requests.insert(pipelined_request, PipelinedRequest::Registered(session_id.clone()));
+                                    for waiter in waiters {
+                                        let _ = waiter.send(Ok((media_handle.clone(), session_id.clone())));
+                                    }
+                                }
+                                _ => (),
+                            }
+
+                    }).await;
+                    }
+
                     Ok(session_id)
                 }
                 Err(err) => {
@@ -1101,7 +1231,7 @@ impl<C: Client + ?Sized> Context<C> {
             }
         };
 
-        Either::Right(fut)
+        fut
     }
 
     /// Keeps alive the session explicitly.
@@ -1310,18 +1440,35 @@ impl<C: Client + ?Sized> Handle<C> {
             .map_err(|_| crate::error::Error::from(crate::error::InternalServerError))?
     }
 
-    /// Checks if a session was already created for the given pipelined request and returns its
-    /// handle and the corresponding session id.
+    /// Registers a pipelined request.
+    ///
+    /// This reserves a session ID for this pipelined request.
+    ///
+    /// On the first call the returned future will immediately resolve and allows the caller to
+    /// set up a media and actually create the session properly. On errors before creating the
+    /// session, the caller should also report the error to the returned channel, or otherwise an
+    /// internal server error will be assumed for other requests for the same pipelined request.
+    ///
+    /// All future calls will wait for the first caller to succeed creating a session or failing to
+    /// do so, or immediately resolve with the already created session.
     pub async fn find_media_for_pipelined_request(
         &mut self,
         pipelined_request: u32,
-    ) -> Option<(MediaHandle<C>, server::SessionId)> {
-        self.run(move |_, ctx| ctx.find_media_for_pipelined_request(pipelined_request))
-            .await
-            .ok()
-            .flatten()
-    }
+    ) -> either::Either<
+        oneshot::Sender<Result<(), crate::error::Error>>,
+        Result<(MediaHandle<C>, server::SessionId), crate::error::Error>,
+    > {
+        use either::Either::{Left, Right};
 
+        match self
+            .spawn(move |_, ctx| ctx.find_media_for_pipelined_request(pipelined_request))
+            .await
+        {
+            Ok(Left(sender)) => Left(sender),
+            Ok(Right(res)) => Right(res),
+            Err(_) => Right(Err(crate::error::InternalServerError.into())),
+        }
+    }
     /// Find an active session media for this client.
     ///
     /// It is possible that the client does not know about the session yet but that a previous
