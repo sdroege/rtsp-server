@@ -73,3 +73,6 @@ pub mod server;
 pub mod stream_handler;
 pub mod typemap;
 pub(crate) mod utils;
+
+pub use either::Either;
+pub use rtsp_types as types;
