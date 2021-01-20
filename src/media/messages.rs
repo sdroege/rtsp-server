@@ -88,7 +88,7 @@ pub(super) enum ClientMessage {
     Play {
         client_id: client::Id,
         session_id: server::SessionId,
-        range: rtsp_types::headers::Range,
+        range: Option<rtsp_types::headers::Range>,
         extra_data: TypeMap,
         #[derivative(Debug = "ignore")]
         ret: oneshot::Sender<

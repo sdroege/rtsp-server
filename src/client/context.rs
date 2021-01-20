@@ -317,7 +317,7 @@ impl<C: Client + ?Sized> MediaHandle<C> {
     pub async fn play(
         &mut self,
         session_id: server::SessionId,
-        range: rtsp_types::headers::Range,
+        range: Option<rtsp_types::headers::Range>,
         extra_data: TypeMap,
     ) -> Result<
         (
@@ -328,7 +328,7 @@ impl<C: Client + ?Sized> MediaHandle<C> {
         crate::error::Error,
     > {
         trace!(
-            "Client {}: Play for media {} with session {} and range {}",
+            "Client {}: Play for media {} with session {} and range {:?}",
             self.controller.client_id(),
             self.controller.media_id(),
             session_id,

@@ -328,7 +328,7 @@ impl rtsp_server::media::Media for Media {
         ctx: &mut rtsp_server::media::Context<Self>,
         _client_id: rtsp_server::client::Id,
         session_id: rtsp_server::server::SessionId,
-        range: rtsp_types::headers::Range,
+        range: Option<rtsp_types::headers::Range>,
         extra_data: rtsp_server::typemap::TypeMap,
     ) -> Pin<
         Box<
@@ -370,26 +370,31 @@ impl rtsp_server::media::Media for Media {
 
             // Check valid ranges
             // TODO: Handle range
-            match range {
-                Range::Npt(npt) => match npt {
-                    NptRange::From(NptTime::Seconds(seconds, nanoseconds))
-                        if seconds == 0 && nanoseconds == None || nanoseconds == Some(0) => {}
-                    NptRange::From(NptTime::Hms(hours, minutes, seconds, nanoseconds))
-                        if hours == 0 && minutes == 0 && seconds == 0 && nanoseconds == None
-                            || nanoseconds == Some(0) => {}
-                    NptRange::From(NptTime::Now) => {}
+            if let Some(range) = range {
+                match range {
+                    Range::Npt(npt) => match npt {
+                        NptRange::From(NptTime::Seconds(seconds, nanoseconds))
+                            if seconds == 0 && nanoseconds == None || nanoseconds == Some(0) => {}
+                        NptRange::From(NptTime::Hms(hours, minutes, seconds, nanoseconds))
+                            if hours == 0
+                                && minutes == 0
+                                && seconds == 0
+                                && nanoseconds == None
+                                || nanoseconds == Some(0) => {}
+                        NptRange::From(NptTime::Now) => {}
+                        _ => {
+                            return Err(rtsp_server::error::ErrorStatus::from(
+                                rtsp_types::StatusCode::InvalidRange,
+                            )
+                            .into());
+                        }
+                    },
                     _ => {
                         return Err(rtsp_server::error::ErrorStatus::from(
                             rtsp_types::StatusCode::InvalidRange,
                         )
                         .into());
                     }
-                },
-                _ => {
-                    return Err(rtsp_server::error::ErrorStatus::from(
-                        rtsp_types::StatusCode::InvalidRange,
-                    )
-                    .into());
                 }
             }
 

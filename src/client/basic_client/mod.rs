@@ -369,7 +369,7 @@ impl Client {
         let fut = async move {
             let mut extra_data = handle.default_extra_data_for_request(&req);
 
-            let range = req.typed_header::<Range>().ok().flatten().ok_or_else(|| {
+            let range = req.typed_header::<Range>().map_err(|_| {
                 error::Error::from(error::ErrorStatus::from(rtsp_types::StatusCode::BadRequest))
             })?;
             let session = req

@@ -406,7 +406,7 @@ async fn task_fn<M: Media>(
                     ret,
                 } => {
                     trace!(
-                        "Media {}: Play {} for client {} session {}",
+                        "Media {}: Play with range {:?} for client {} session {}",
                         ctx.id,
                         range,
                         client_id,

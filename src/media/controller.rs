@@ -285,7 +285,7 @@ impl Controller<Client> {
     pub async fn play(
         &mut self,
         session_id: server::SessionId,
-        range: rtsp_types::headers::Range,
+        range: Option<rtsp_types::headers::Range>,
         extra_data: TypeMap,
     ) -> Result<
         (

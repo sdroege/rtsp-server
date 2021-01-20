@@ -227,7 +227,7 @@ pub trait Media: Send + 'static {
         ctx: &mut Context<Self>,
         client_id: client::Id,
         session_id: server::SessionId,
-        range: rtsp_types::headers::Range,
+        range: Option<rtsp_types::headers::Range>,
         extra_data: TypeMap,
     ) -> Pin<
         Box<
