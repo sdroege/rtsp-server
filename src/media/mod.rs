@@ -69,10 +69,13 @@ impl PartialEq for ConfiguredTransport {
     }
 }
 
-/// Stream id.
+/// Stream ID.
 ///
-/// Equal to the control part of the SDP. This allows referring directly to the different streams
-/// of the media.
+/// Equal to the control attribute of the SDP.
+///
+/// Joining this with the [`server::PresentationURI`] should give the control URI of the stream.
+///
+/// This allows referring directly to the different streams of the media.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StreamId(Arc<String>);
 
@@ -151,6 +154,7 @@ pub trait Media: Send + 'static {
         &mut self,
         ctx: &mut Context<Self>,
         client_id: Option<client::Id>,
+        stream_id: Option<StreamId>,
         supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         extra_data: TypeMap,
@@ -221,12 +225,12 @@ pub trait Media: Send + 'static {
 
     /// Start playback of the media at a given range.
     // TODO: Seek-Style, Scale, Speed headers
-    // TODO: Need to add StreamId for non-aggregate control
     fn play(
         &mut self,
         ctx: &mut Context<Self>,
         client_id: client::Id,
         session_id: server::SessionId,
+        stream_id: Option<StreamId>,
         range: Option<rtsp_types::headers::Range>,
         extra_data: TypeMap,
     ) -> Pin<
@@ -245,12 +249,12 @@ pub trait Media: Send + 'static {
     >;
 
     /// Pause playback of the media.
-    // TODO: Need to add StreamId for non-aggregate control
     fn pause(
         &mut self,
         ctx: &mut Context<Self>,
         client_id: client::Id,
         session_id: server::SessionId,
+        stream_id: Option<StreamId>,
         extra_data: TypeMap,
     ) -> Pin<
         Box<

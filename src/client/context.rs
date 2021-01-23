@@ -39,7 +39,16 @@ impl<C: Client + ?Sized> Clone for Handle<C> {
 }
 
 pub(super) enum PipelinedRequest<C: Client + ?Sized> {
-    Waiting(Vec<oneshot::Sender<Result<(MediaHandle<C>, server::SessionId), crate::error::Error>>>),
+    Waiting(
+        Vec<
+            oneshot::Sender<
+                Result<
+                    (MediaHandle<C>, server::PresentationURI, server::SessionId),
+                    crate::error::Error,
+                >,
+            >,
+        >,
+    ),
     Registered(server::SessionId),
 }
 
@@ -70,8 +79,9 @@ pub struct Context<C: Client + ?Sized> {
 
     /// Sessions of this client.
     ///
-    /// Media id, possible pipelined requests and interleaved channel ids.
-    pub(super) sessions: HashMap<server::SessionId, (media::Id, Option<u32>, Vec<u8>)>,
+    /// Media id, presentation URI, possible pipelined requests and interleaved channel ids.
+    pub(super) sessions:
+        HashMap<server::SessionId, (media::Id, server::PresentationURI, Option<u32>, Vec<u8>)>,
 
     /// Pipelined requests of this client.
     pub(super) pipelined_requests: HashMap<u32, PipelinedRequest<C>>,
@@ -149,6 +159,7 @@ impl<C: Client + ?Sized> MediaHandle<C> {
 
     pub async fn options(
         &mut self,
+        stream_id: Option<media::StreamId>,
         supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         extra_data: TypeMap,
@@ -161,15 +172,16 @@ impl<C: Client + ?Sized> MediaHandle<C> {
         crate::error::Error,
     > {
         trace!(
-            "Client {}: Getting OPTIONS for media {} with supported {:?} require {:?}",
+            "Client {}: Getting OPTIONS for media {} with stream id {:?} supported {:?} require {:?}",
             self.controller.client_id(),
             self.controller.media_id(),
+            stream_id,
             supported,
             require
         );
         let res = self
             .controller
-            .options(supported, require, extra_data)
+            .options(stream_id, supported, require, extra_data)
             .await;
         trace!(
             "Client {}: Got OPTIONS for media {}: {:?}",
@@ -221,7 +233,7 @@ impl<C: Client + ?Sized> MediaHandle<C> {
         let session_id_clone = session_id.clone();
         self.handle
             .run(move |_client, ctx| {
-                if let Some((session_media_id, _, _)) = ctx.sessions.get(&session_id_clone) {
+                if let Some((session_media_id, _, _, _)) = ctx.sessions.get(&session_id_clone) {
                     if *session_media_id == media_id {
                         Ok(())
                     } else {
@@ -277,7 +289,7 @@ impl<C: Client + ?Sized> MediaHandle<C> {
         let session_id_clone = session_id.clone();
         self.handle
             .run(move |_client, ctx| {
-                if let Some((session_media_id, _, _)) = ctx.sessions.get(&session_id_clone) {
+                if let Some((session_media_id, _, _, _)) = ctx.sessions.get(&session_id_clone) {
                     if *session_media_id == media_id {
                         Ok(())
                     } else {
@@ -317,6 +329,7 @@ impl<C: Client + ?Sized> MediaHandle<C> {
     pub async fn play(
         &mut self,
         session_id: server::SessionId,
+        stream_id: Option<media::StreamId>,
         range: Option<rtsp_types::headers::Range>,
         extra_data: TypeMap,
     ) -> Result<
@@ -339,7 +352,7 @@ impl<C: Client + ?Sized> MediaHandle<C> {
         let session_id_clone = session_id.clone();
         self.handle
             .run(move |_client, ctx| {
-                if let Some((session_media_id, _, _)) = ctx.sessions.get(&session_id_clone) {
+                if let Some((session_media_id, _, _, _)) = ctx.sessions.get(&session_id_clone) {
                     if *session_media_id == media_id {
                         Ok(())
                     } else {
@@ -363,7 +376,7 @@ impl<C: Client + ?Sized> MediaHandle<C> {
 
         let res = self
             .controller
-            .play(session_id.clone(), range, extra_data)
+            .play(session_id.clone(), stream_id, range, extra_data)
             .await;
 
         trace!(
@@ -380,6 +393,7 @@ impl<C: Client + ?Sized> MediaHandle<C> {
     pub async fn pause(
         &mut self,
         session_id: server::SessionId,
+        stream_id: Option<media::StreamId>,
         extra_data: TypeMap,
     ) -> Result<(rtsp_types::headers::Range, TypeMap), crate::error::Error> {
         trace!(
@@ -393,7 +407,7 @@ impl<C: Client + ?Sized> MediaHandle<C> {
         let session_id_clone = session_id.clone();
         self.handle
             .run(move |_client, ctx| {
-                if let Some((session_media_id, _, _)) = ctx.sessions.get(&session_id_clone) {
+                if let Some((session_media_id, _, _, _)) = ctx.sessions.get(&session_id_clone) {
                     if *session_media_id == media_id {
                         Ok(())
                     } else {
@@ -415,7 +429,10 @@ impl<C: Client + ?Sized> MediaHandle<C> {
             .await
             .map_err(|_| crate::error::Error::from(crate::error::InternalServerError))??;
 
-        let res = self.controller.pause(session_id.clone(), extra_data).await;
+        let res = self
+            .controller
+            .pause(session_id.clone(), stream_id, extra_data)
+            .await;
 
         trace!(
             "Client {}: Plaued for media {} with session {}: {:?}",
@@ -454,7 +471,7 @@ impl<C: Client + ?Sized> MediaFactoryHandle<C> {
     /// Query the media factory for OPTIONS on the given URI.
     pub async fn options(
         &mut self,
-        uri: url::Url,
+        stream_id: Option<media::StreamId>,
         supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         extra_data: TypeMap,
@@ -468,16 +485,16 @@ impl<C: Client + ?Sized> MediaFactoryHandle<C> {
         crate::error::Error,
     > {
         trace!(
-            "Client {}: Getting OPTIONS for media factory {} with URI {} supported {:?} require {:?}",
+            "Client {}: Getting OPTIONS for media factory {} with stream ID {:?} supported {:?} require {:?}",
             self.controller.client_id(),
             self.controller.media_factory_id(),
-            uri,
+            stream_id,
             supported,
             require
         );
         let res = self
             .controller
-            .options(uri, supported, require, extra_data)
+            .options(stream_id, supported, require, extra_data)
             .await;
         trace!(
             "Client {}: Got OPTIONS for media factory {}: {:?}",
@@ -492,41 +509,16 @@ impl<C: Client + ?Sized> MediaFactoryHandle<C> {
     /// Query the media factory for a session description on the given URI.
     pub async fn describe(
         &mut self,
-        uri: url::Url,
         extra_data: TypeMap,
     ) -> Result<(sdp_types::Session, TypeMap), crate::error::Error> {
         trace!(
-            "Client {}: Getting session description for media factory {} with URI {}",
+            "Client {}: Getting session description for media factory {}",
             self.controller.client_id(),
             self.controller.media_factory_id(),
-            uri,
         );
-        let res = self.controller.describe(uri, extra_data).await;
+        let res = self.controller.describe(extra_data).await;
         trace!(
             "Client {}: Got session description for media factory {}: {:?}",
-            self.controller.client_id(),
-            self.controller.media_factory_id(),
-            res
-        );
-
-        res
-    }
-
-    /// Query the media factory for the presentation URI on the given URI.
-    pub async fn find_presentation_uri(
-        &mut self,
-        uri: url::Url,
-        extra_data: TypeMap,
-    ) -> Result<(url::Url, Option<media::StreamId>, TypeMap), crate::error::Error> {
-        trace!(
-            "Client {}: Getting presentation URI for media factory {} with URI {}",
-            self.controller.client_id(),
-            self.controller.media_factory_id(),
-            uri,
-        );
-        let res = self.controller.find_presentation_uri(uri, extra_data).await;
-        trace!(
-            "Client {}: Got presentation URI for media factory {}: {:?}",
             self.controller.client_id(),
             self.controller.media_factory_id(),
             res
@@ -538,10 +530,9 @@ impl<C: Client + ?Sized> MediaFactoryHandle<C> {
     /// Create a new media from the media factory for the given URI.
     pub async fn create_media(
         &mut self,
-        uri: url::Url,
         extra_data: TypeMap,
     ) -> Result<(MediaHandle<C>, TypeMap), crate::error::Error> {
-        let (media_controller, extra_data) = self.controller.create_media(uri, extra_data).await?;
+        let (media_controller, extra_data) = self.controller.create_media(extra_data).await?;
 
         Ok((
             MediaHandle {
@@ -799,18 +790,20 @@ impl<C: Client + ?Sized> Context<C> {
         Ok((selected_channel_id, senders))
     }
 
-    /// Find a media factory for a given URI.
+    /// Find a media factory and presentation URI for a given URI.
     pub fn find_media_factory_for_uri(
         &self,
         uri: url::Url,
         extra_data: TypeMap,
-    ) -> impl Future<Output = Result<MediaFactoryHandle<C>, crate::error::Error>> + Send {
+    ) -> impl Future<
+        Output = Result<(MediaFactoryHandle<C>, server::PresentationURI), crate::error::Error>,
+    > + Send {
         let mut server_controller = self.server_controller.clone();
         let id = self.id;
         let controller_sender = self.controller_sender.clone();
         let client_handle = self.handle();
         let fut = async move {
-            let media_factory_controller = server_controller
+            let (media_factory_controller, presentation_uri) = server_controller
                 .find_media_factory_for_uri(uri.clone(), extra_data)
                 .await
                 .map_err(|err| {
@@ -825,17 +818,21 @@ impl<C: Client + ?Sized> Context<C> {
                 })?;
 
             trace!(
-                "Client {}: Found media factory {} for URI {}",
+                "Client {}: Found media factory {} for URI {} with presentation URI {}",
                 id,
                 media_factory_controller.media_factory_id(),
                 uri,
+                presentation_uri,
             );
 
-            Ok(MediaFactoryHandle {
-                controller: media_factory_controller,
-                sender: controller_sender,
-                handle: client_handle,
-            })
+            Ok((
+                MediaFactoryHandle {
+                    controller: media_factory_controller,
+                    sender: controller_sender,
+                    handle: client_handle,
+                },
+                presentation_uri,
+            ))
         };
 
         Box::pin(fut)
@@ -853,7 +850,7 @@ impl<C: Client + ?Sized> Context<C> {
     /// All future calls will wait for the first caller to succeed creating a session or failing to
     /// do so, or immediately resolve with the already created session.
     // TODO: impl Future
-    pub fn find_media_for_pipelined_request(
+    pub fn find_session_for_pipelined_request(
         &mut self,
         pipelined_request: u32,
     ) -> Pin<
@@ -861,7 +858,10 @@ impl<C: Client + ?Sized> Context<C> {
             dyn Future<
                     Output = either::Either<
                         oneshot::Sender<Result<(), crate::error::Error>>,
-                        Result<(MediaHandle<C>, server::SessionId), crate::error::Error>,
+                        Result<
+                            (MediaHandle<C>, server::PresentationURI, server::SessionId),
+                            crate::error::Error,
+                        >,
                     >,
                 > + Send,
         >,
@@ -940,13 +940,14 @@ impl<C: Client + ?Sized> Context<C> {
                         .and_then(|res| res);
 
                     match res {
-                        Ok((ref media_handle, ref session_id)) => {
+                        Ok((ref media_handle, ref presentation_uri, ref session_id)) => {
                             trace!(
-                                "Client {}: Found media {} for pipelined request {} with session id {}",
+                                "Client {}: Found media {} for pipelined request {} with session id {} and presentation URI {}",
                                 id,
                                 media_handle.media_id(),
                                 pipelined_request,
-                                session_id
+                                session_id,
+                                presentation_uri
                             );
                         }
                         Err(ref err) => {
@@ -963,16 +964,18 @@ impl<C: Client + ?Sized> Context<C> {
                 });
             }
             Some(PipelinedRequest::Registered(session_id)) => {
-                if let Some((media_id, _, _)) = self.sessions.get(session_id) {
+                if let Some((media_id, presentation_uri, _, _)) = self.sessions.get(session_id) {
                     let session_id = session_id.clone();
+                    let presentation_uri = presentation_uri.clone();
 
                     let (media, _) = self.session_medias.get(&media_id).expect("media not found");
                     trace!(
-                        "Client {}: Found media {} for pipelined request {} with session id {}",
+                        "Client {}: Found media {} for pipelined request {} with session id {} and presentation URI {}",
                         self.id,
                         media_id,
                         pipelined_request,
-                        session_id
+                        session_id,
+                        presentation_uri
                     );
 
                     let media_handle = MediaHandle {
@@ -982,7 +985,7 @@ impl<C: Client + ?Sized> Context<C> {
                     };
 
                     return Box::pin(async move {
-                        either::Either::Right(Ok((media_handle, session_id)))
+                        either::Either::Right(Ok((media_handle, presentation_uri, session_id)))
                     });
                 } else {
                     panic!(
@@ -996,62 +999,47 @@ impl<C: Client + ?Sized> Context<C> {
 
     /// Find an active session media for this client.
     ///
-    /// It is possible that the client does not know about the session yet but that a previous
-    /// client created this session and it is still active in this server.
+    /// Checks if the servers knows about this session and makes the current client the active
+    /// client for this session if it exists and is active.
     ///
-    /// Use `Context::find_server_session_media()` for that case.
-    pub fn find_session_media(&self, session_id: &server::SessionId) -> Option<MediaHandle<C>> {
-        if let Some((media_id, _, _)) = self.sessions.get(session_id) {
-            trace!(
-                "Client {}: Found media {} for session id {}",
-                self.id,
-                media_id,
-                session_id
-            );
-            self.session_medias.get(&media_id).map(|c| MediaHandle {
-                controller: c.0.clone(),
-                sender: self.controller_sender.clone(),
-                handle: self.handle(),
-            })
-        } else {
-            trace!(
-                "Client {}: Did not find media for session id {}",
-                self.id,
-                session_id
-            );
-            None
-        }
-    }
-
-    /// Find an active session media for this client.
-    ///
-    /// Different to `Context::find_session_media()` this checks if the servers knows about this
-    /// session and makes the current client the active client for this session if it exists and is
-    /// active.
-    ///
-    /// The client will remember the session media for future calls.
-    pub fn find_server_session_media(
+    /// Returns the media handle and presentation URI for the session.
+    pub fn find_session(
         &mut self,
         session_id: &server::SessionId,
-    ) -> impl Future<Output = Result<MediaHandle<C>, crate::error::Error>> + Send {
+    ) -> impl Future<Output = Result<(MediaHandle<C>, server::PresentationURI), crate::error::Error>>
+           + Send {
         use future::Either;
 
-        if let Some(media_handle) = self.find_session_media(session_id) {
+        if let Some((media_id, presentation_uri, _, _)) = self.sessions.get(session_id) {
             trace!(
-                "Client {}: Found media {} for session {}",
+                "Client {}: Found media {} for session id {} with presentation URI {}",
                 self.id,
-                media_handle.media_id(),
-                session_id
+                media_id,
+                session_id,
+                presentation_uri,
             );
-            return Either::Left(async move { Ok(media_handle) });
+
+            let media_handle = self
+                .session_medias
+                .get(&media_id)
+                .map(|c| MediaHandle {
+                    controller: c.0.clone(),
+                    sender: self.controller_sender.clone(),
+                    handle: self.handle(),
+                })
+                .expect("no media");
+
+            let presentation_uri = presentation_uri.clone();
+
+            return Either::Left(async move { Ok((media_handle, presentation_uri)) });
         }
 
         let session_id = session_id.clone();
         let mut server_controller = self.server_controller.clone();
         let mut client_handle = self.handle();
         let fut = async move {
-            let media_controller = server_controller
-                .find_session_media(session_id.clone())
+            let (media_controller, presentation_uri) = server_controller
+                .find_session(session_id.clone())
                 .await
                 .map_err(|err| {
                     trace!(
@@ -1066,17 +1054,27 @@ impl<C: Client + ?Sized> Context<C> {
             client_handle
                 .run(|_client, ctx| {
                     trace!(
-                        "Client {}: Found media {} for session {}",
+                        "Client {}: Found media {} for session {} with presentation URI {}",
                         ctx.id(),
                         media_controller.media_id(),
-                        session_id
+                        session_id,
+                        presentation_uri,
                     );
-                    if let Some((media_id, _, _)) = ctx.sessions.get(&session_id) {
+
+                    if let Some((media_id, old_presentation_uri, _, _)) =
+                        ctx.sessions.get(&session_id)
+                    {
                         assert_eq!(media_controller.media_id(), *media_id);
+                        assert_eq!(presentation_uri, *old_presentation_uri);
                     } else {
                         ctx.sessions.insert(
                             session_id.clone(),
-                            (media_controller.media_id(), None, Vec::new()),
+                            (
+                                media_controller.media_id(),
+                                presentation_uri.clone(),
+                                None,
+                                Vec::new(),
+                            ),
                         );
                         ctx.session_medias.insert(
                             media_controller.media_id(),
@@ -1085,11 +1083,14 @@ impl<C: Client + ?Sized> Context<C> {
                     }
 
                     let client_handle = ctx.handle();
-                    MediaHandle {
-                        controller: media_controller,
-                        sender: ctx.controller_sender.clone(),
-                        handle: client_handle,
-                    }
+                    (
+                        MediaHandle {
+                            controller: media_controller,
+                            sender: ctx.controller_sender.clone(),
+                            handle: client_handle,
+                        },
+                        presentation_uri,
+                    )
                 })
                 .await
                 .map_err(|_| crate::error::InternalServerError.into())
@@ -1105,7 +1106,7 @@ impl<C: Client + ?Sized> Context<C> {
     // TODO: Might want to be able to configure a non-60s timeout for the session
     pub fn create_session(
         &mut self,
-        presentation_uri: url::Url,
+        presentation_uri: server::PresentationURI,
         pipelined_request: Option<u32>,
         media_handle: &MediaHandle<C>,
     ) -> impl Future<Output = Result<server::SessionId, crate::error::Error>> + Send {
@@ -1133,7 +1134,12 @@ impl<C: Client + ?Sized> Context<C> {
 
         self.sessions.insert(
             session_id.clone(),
-            (media_id, pipelined_request, Vec::new()),
+            (
+                media_id,
+                presentation_uri.clone(),
+                pipelined_request,
+                Vec::new(),
+            ),
         );
 
         self.session_medias.insert(
@@ -1152,15 +1158,16 @@ impl<C: Client + ?Sized> Context<C> {
         let mut server_controller = self.server_controller.clone();
         let fut = async move {
             let res = server_controller
-                .create_session(presentation_uri, media_controller)
+                .create_session(presentation_uri.clone(), media_controller)
                 .await;
 
             match res {
                 Ok(()) => {
                     trace!(
-                        "Client {}: Created session {}",
+                        "Client {}: Created session {} for presentation URI {}",
                         server_controller.client_id(),
-                        session_id
+                        session_id,
+                        presentation_uri
                     );
 
                     if let Some(pipelined_request) = pipelined_request {
@@ -1176,7 +1183,7 @@ impl<C: Client + ?Sized> Context<C> {
                                 Some(PipelinedRequest::Waiting(waiters)) => {
                                     ctx.pipelined_requests.insert(pipelined_request, PipelinedRequest::Registered(session_id.clone()));
                                     for waiter in waiters {
-                                        let _ = waiter.send(Ok((media_handle.clone(), session_id.clone())));
+                                        let _ = waiter.send(Ok((media_handle.clone(), presentation_uri.clone(), session_id.clone())));
                                     }
                                 }
                                 _ => (),
@@ -1203,7 +1210,7 @@ impl<C: Client + ?Sized> Context<C> {
                                 ctx.pipelined_requests.remove(&pipelined_request);
                             }
 
-                            if let Some((_, _, channel_ids)) = ctx.sessions.remove(&session_id) {
+                            if let Some((_, _, _, channel_ids)) = ctx.sessions.remove(&session_id) {
                                 for channel_id in channel_ids {
                                     if let Some((_, mut sender)) =
                                         ctx.interleaved_channels.remove(&channel_id)
@@ -1253,7 +1260,7 @@ impl<C: Client + ?Sized> Context<C> {
         }
 
         let mut media_controller = None;
-        if let Some((media_id, _, _)) = self.sessions.remove(session_id) {
+        if let Some((media_id, _, _, _)) = self.sessions.get(session_id) {
             media_controller = self.session_medias.get(&media_id).map(|(c, _)| c.clone());
         }
 
@@ -1300,7 +1307,9 @@ impl<C: Client + ?Sized> Context<C> {
         }
 
         let mut media_controller = None;
-        if let Some((media_id, pipelined_request, channel_ids)) = self.sessions.remove(session_id) {
+        if let Some((media_id, _, pipelined_request, channel_ids)) =
+            self.sessions.remove(session_id)
+        {
             media_controller = self.session_medias.remove(&media_id).map(|(c, _)| c);
 
             if let Some(pipelined_request) = pipelined_request {
@@ -1429,12 +1438,12 @@ impl<C: Client + ?Sized> Handle<C> {
             .map_err(|_| crate::error::Error::from(crate::error::InternalServerError))?
     }
 
-    /// Find a media factory for a given URI.
+    /// Find a media factory and presentation URI for a given URI.
     pub async fn find_media_factory_for_uri(
         &mut self,
         uri: url::Url,
         extra_data: TypeMap,
-    ) -> Result<MediaFactoryHandle<C>, crate::error::Error> {
+    ) -> Result<(MediaFactoryHandle<C>, server::PresentationURI), crate::error::Error> {
         self.spawn(move |_, ctx| ctx.find_media_factory_for_uri(uri, extra_data))
             .await
             .map_err(|_| crate::error::Error::from(crate::error::InternalServerError))?
@@ -1451,17 +1460,17 @@ impl<C: Client + ?Sized> Handle<C> {
     ///
     /// All future calls will wait for the first caller to succeed creating a session or failing to
     /// do so, or immediately resolve with the already created session.
-    pub async fn find_media_for_pipelined_request(
+    pub async fn find_session_for_pipelined_request(
         &mut self,
         pipelined_request: u32,
     ) -> either::Either<
         oneshot::Sender<Result<(), crate::error::Error>>,
-        Result<(MediaHandle<C>, server::SessionId), crate::error::Error>,
+        Result<(MediaHandle<C>, server::PresentationURI, server::SessionId), crate::error::Error>,
     > {
         use either::Either::{Left, Right};
 
         match self
-            .spawn(move |_, ctx| ctx.find_media_for_pipelined_request(pipelined_request))
+            .spawn(move |_, ctx| ctx.find_session_for_pipelined_request(pipelined_request))
             .await
         {
             Ok(Left(sender)) => Left(sender),
@@ -1469,36 +1478,19 @@ impl<C: Client + ?Sized> Handle<C> {
             Err(_) => Right(Err(crate::error::InternalServerError.into())),
         }
     }
-    /// Find an active session media for this client.
-    ///
-    /// It is possible that the client does not know about the session yet but that a previous
-    /// client created this session and it is still active in this server.
-    ///
-    /// Use `Context::find_server_session_media()` for that case.
-    pub async fn find_session_media(
-        &mut self,
-        session_id: &server::SessionId,
-    ) -> Option<MediaHandle<C>> {
-        let session_id = session_id.clone();
-        self.run(move |_, ctx| ctx.find_session_media(&session_id))
-            .await
-            .ok()
-            .flatten()
-    }
 
     /// Find an active session media for this client.
     ///
-    /// Different to `Context::find_session_media()` this checks if the servers knows about this
-    /// session and makes the current client the active client for this session if it exists and is
-    /// active.
+    /// Checks if the servers knows about this session and makes the current client the active
+    /// client for this session if it exists and is active.
     ///
-    /// The client will remember the session media for future calls.
-    pub async fn find_server_session_media(
+    /// Returns the media handle and presentation URI for the session.
+    pub async fn find_session(
         &mut self,
         session_id: &server::SessionId,
-    ) -> Result<MediaHandle<C>, crate::error::Error> {
+    ) -> Result<(MediaHandle<C>, server::PresentationURI), crate::error::Error> {
         let session_id = session_id.clone();
-        self.spawn(move |_, ctx| ctx.find_server_session_media(&session_id))
+        self.spawn(move |_, ctx| ctx.find_session(&session_id))
             .await
             .map_err(|_| crate::error::Error::from(crate::error::InternalServerError))?
     }
@@ -1509,7 +1501,7 @@ impl<C: Client + ?Sized> Handle<C> {
     /// `Context::shutdown_session()` or when it times out.
     pub async fn create_session(
         &mut self,
-        presentation_uri: url::Url,
+        presentation_uri: server::PresentationURI,
         pipelined_request: Option<u32>,
         media_handle: &MediaHandle<C>,
     ) -> Result<server::SessionId, crate::error::Error> {

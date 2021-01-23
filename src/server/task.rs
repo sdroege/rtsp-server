@@ -130,16 +130,18 @@ async fn task_fn(
                             debug!("Client {} looking for media factory at {}", client_id, uri);
 
                             if let Some(ref mounts) = ctx.mounts {
-                                if let Some(media_factory_controller) =
+                                if let Some((media_factory_controller, presentation_uri)) =
                                     mounts.match_uri(client_id, &uri, extra_data)
                                 {
                                     debug!(
-                                        "Client {} found media factory {} for {}",
+                                        "Client {} found media factory {} for {} with presentation URI {}",
                                         client_id,
                                         media_factory_controller.media_factory_id(),
-                                        uri
+                                        uri,
+                                        presentation_uri,
                                     );
-                                    let _ = ret.send(Ok(media_factory_controller));
+                                    let _ =
+                                        ret.send(Ok((media_factory_controller, presentation_uri)));
                                 } else {
                                     debug!(
                                         "Client {} no media factory for {} available",
@@ -238,7 +240,7 @@ async fn task_fn(
                             let _ = ret.send(Err(crate::error::InternalServerError.into()));
                         }
                     }
-                    ClientMessage::FindSessionMedia {
+                    ClientMessage::FindSession {
                         client_id,
                         session_id,
                         ret,
@@ -269,6 +271,8 @@ async fn task_fn(
                                 }
                                 session.client_id = Some(client_id);
 
+                                let presentation_uri = session.presentation_uri.clone();
+
                                 // Notify old client and media asynchronously and then reply to the new
                                 // client
                                 let mut media = session.media.clone();
@@ -286,22 +290,22 @@ async fn task_fn(
                                         .client_changed(server_controller, Some(client_controller))
                                         .await;
 
-                                    let _ = ret.send(Ok(media::Controller::<
+                                    let _ = ret.send(Ok((media::Controller::<
                                         media::controller::Client,
                                     >::from_server_controller(
                                         &media, client_id
-                                    )));
+                                    ), presentation_uri)));
                                 });
                             } else {
                                 error!(
-                                    "Client {} tried to create session {} but the client is not known",
+                                    "Client {} tried to find session {} but the client is not known",
                                     client_id, session_id
                                 );
                                 let _ = ret.send(Err(crate::error::InternalServerError.into()));
                             }
                         } else {
                             info!(
-                                "Client {} tried to create session {} but it does not exist",
+                                "Client {} tried to find session {} but it does not exist",
                                 client_id, session_id
                             );
                             let _ = ret.send(Err(crate::error::ErrorStatus::from(

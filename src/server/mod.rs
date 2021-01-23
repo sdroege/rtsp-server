@@ -13,4 +13,5 @@ pub(self) mod task;
 
 pub(self) const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 
+pub use mounts::PresentationURI;
 pub use session::Id as SessionId;

@@ -45,7 +45,10 @@ pub(super) enum ClientMessage {
         #[derivative(Debug = "ignore")]
         ret: oneshot::Sender<
             Result<
-                media_factory::Controller<media_factory::controller::Client>,
+                (
+                    media_factory::Controller<media_factory::controller::Client>,
+                    super::PresentationURI,
+                ),
                 crate::error::Error,
             >,
         >,
@@ -53,19 +56,25 @@ pub(super) enum ClientMessage {
     /// Create a new session.
     CreateSession {
         client_id: client::Id,
-        presentation_uri: url::Url,
+        presentation_uri: super::PresentationURI,
         #[derivative(Debug = "ignore")]
         media: media::Controller<media::controller::Server>,
         #[derivative(Debug = "ignore")]
         ret: oneshot::Sender<Result<(), crate::error::Error>>,
     },
     /// Get an existing session media with a given id.
-    FindSessionMedia {
+    FindSession {
         client_id: client::Id,
         session_id: session::Id,
         #[derivative(Debug = "ignore")]
         ret: oneshot::Sender<
-            Result<media::Controller<media::controller::Client>, crate::error::Error>,
+            Result<
+                (
+                    media::Controller<media::controller::Client>,
+                    super::PresentationURI,
+                ),
+                crate::error::Error,
+            >,
         >,
     },
     KeepAliveSession {

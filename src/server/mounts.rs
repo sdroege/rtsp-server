@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::mem;
+use std::sync::Arc;
 
 use futures::stream::FuturesUnordered;
 
@@ -13,12 +15,53 @@ use crate::media_factory;
 use crate::server;
 use crate::typemap::TypeMap;
 
+/// Presentation URI.
+///
+/// Joining the presentation URI with the control attribute of the SDP should give the control URI
+/// of the stream.
+///
+/// This is also passed through the extra data in various places.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PresentationURI(Arc<url::Url>);
+
+impl AsRef<url::Url> for PresentationURI {
+    fn as_ref(&self) -> &url::Url {
+        &self.0
+    }
+}
+
+impl std::borrow::Borrow<url::Url> for PresentationURI {
+    fn borrow(&self) -> &url::Url {
+        self.as_ref()
+    }
+}
+
+impl std::ops::Deref for PresentationURI {
+    type Target = url::Url;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+impl fmt::Display for PresentationURI {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <url::Url as fmt::Display>::fmt(&self.0, f)
+    }
+}
+
+impl From<url::Url> for PresentationURI {
+    fn from(uri: url::Url) -> Self {
+        PresentationURI(Arc::new(uri))
+    }
+}
+
 /// Matches RTSP URLs and returns a handle to the corresponding media factory
 pub struct Mounts {
     /// All match functions in the order they were defined.
     match_fns: HashMap<
         media_factory::Id,
-        Box<dyn Fn(&url::Url, &TypeMap) -> bool + Send + Sync + 'static>,
+        Box<dyn Fn(&url::Url, &TypeMap) -> Option<PresentationURI> + Send + Sync + 'static>,
     >,
 
     /// Spawned media factories with their controllers.
@@ -58,7 +101,7 @@ pub struct Builder {
     )>,
     match_fns: Vec<(
         media_factory::Id,
-        Box<dyn Fn(&url::Url, &TypeMap) -> bool + Send + Sync + 'static>,
+        Box<dyn Fn(&url::Url, &TypeMap) -> Option<PresentationURI> + Send + Sync + 'static>,
     )>,
 }
 
@@ -73,6 +116,8 @@ impl Builder {
     }
 
     /// Matches the factory if the requested path is a prefix of `path`.
+    ///
+    /// The corresponding presentation URI will be the path followed by a '/'.
     ///
     /// Must start with `/` or otherwise this function panics.
     pub fn path<
@@ -94,12 +139,21 @@ impl Builder {
             }),
         ));
 
-        let path = String::from(path);
+        let path = if path.ends_with('/') {
+            String::from(path)
+        } else {
+            format!("{}/", path)
+        };
+
         self.match_fns.push((
             id,
             Box::new(move |url, _extra_data| {
+                if url.cannot_be_a_base() {
+                    return None;
+                }
+
                 let mut uri_path_segments = match url.path_segments() {
-                    None => return false,
+                    None => return None,
                     Some(segments) => segments,
                 };
                 let match_path_segments = path[1..].split('/');
@@ -109,27 +163,42 @@ impl Builder {
                 //
                 // This match `/foo/bar` for `/foo` but not `/foobar`.
                 for match_path_segment in match_path_segments {
+                    // Skip the last, empty path segment
+                    if match_path_segment.is_empty() {
+                        break;
+                    }
+
                     if let Some(uri_path_segment) = uri_path_segments.next() {
                         if match_path_segment != uri_path_segment {
-                            return false;
+                            return None;
                         }
                     } else {
-                        return false;
+                        return None;
                     }
                 }
 
-                true
+                let mut presentation_uri = url.clone();
+                presentation_uri.set_query(None);
+                presentation_uri.set_fragment(None);
+                let _ = presentation_uri.set_username("");
+                let _ = presentation_uri.set_password(None);
+                presentation_uri.set_path(&path);
+
+                Some(PresentationURI::from(presentation_uri))
             }),
         ));
 
         self
     }
 
-    /// Matches the factory based on `func` returning `true`.
+    /// Matches the factory based on `func` and returns the presentation URI if it matches.
+    ///
+    /// The presentation URI would be equivalent to the `Content-Base` and joining it with the
+    /// media's stream IDs should result in the stream control URIs.
     pub fn matches<
         MF: media_factory::MediaFactory,
         F: FnOnce(media_factory::Id) -> MF + Send + 'static,
-        G: Fn(&url::Url, &TypeMap) -> bool + Send + Sync + 'static,
+        G: Fn(&url::Url, &TypeMap) -> Option<PresentationURI> + Send + Sync + 'static,
     >(
         mut self,
         func: G,
@@ -158,24 +227,30 @@ impl Mounts {
         }
     }
 
-    /// Match `uri` and return the first matching media factory.
+    /// Match `uri` and return the first matching media factory and the corresponding presentation URI.
     pub(super) fn match_uri(
         &self,
         client_id: client::Id,
         uri: &url::Url,
         extra_data: TypeMap,
-    ) -> Option<media_factory::Controller<media_factory::controller::Client>> {
+    ) -> Option<(
+        media_factory::Controller<media_factory::controller::Client>,
+        PresentationURI,
+    )> {
         assert!(self.factory_fns.is_empty());
 
         for (id, match_fn) in &self.match_fns {
-            if match_fn(uri, &extra_data) {
-                debug!("Match URI {} to media factory {}", uri, id);
+            if let Some(presentation_uri) = match_fn(uri, &extra_data) {
+                debug!(
+                    "Match URI {} to media factory {} with presentation URI {}",
+                    uri, id, presentation_uri
+                );
                 let factory_controller = self.factories.get(&id).expect("factory not found");
-                return Some(media_factory::controller::Controller::<
+                return Some((media_factory::controller::Controller::<
                     media_factory::controller::Client,
                 >::from_server_controller(
                     &factory_controller, client_id
-                ));
+                ), presentation_uri));
             }
         }
 

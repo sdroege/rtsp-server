@@ -10,7 +10,9 @@ use crate::media;
 
 static SESSIONS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
-/// Session Id
+/// Session ID.
+///
+/// This is also passed through the extra data in various places.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct Id(Arc<IdInner>);
 
@@ -109,7 +111,7 @@ pub struct Session {
     pub(super) client_id: Option<client::Id>,
 
     /// Presentation URI for this session.
-    pub(super) presentation_uri: url::Url,
+    pub(super) presentation_uri: super::PresentationURI,
 
     /// Last time this session was active.
     pub(super) last_active: std::time::Instant,

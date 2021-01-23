@@ -173,8 +173,13 @@ impl Controller<Client> {
         &mut self,
         uri: url::Url,
         extra_data: TypeMap,
-    ) -> Result<media_factory::Controller<media_factory::controller::Client>, crate::error::Error>
-    {
+    ) -> Result<
+        (
+            media_factory::Controller<media_factory::controller::Client>,
+            super::PresentationURI,
+        ),
+        crate::error::Error,
+    > {
         let (sender, receiver) = oneshot::channel();
 
         if let Err(_) = self
@@ -200,7 +205,7 @@ impl Controller<Client> {
 
     pub async fn create_session(
         &mut self,
-        presentation_uri: url::Url,
+        presentation_uri: super::PresentationURI,
         media: media::Controller<media::controller::Server>,
     ) -> Result<(), crate::error::Error> {
         let (sender, receiver) = oneshot::channel();
@@ -226,16 +231,22 @@ impl Controller<Client> {
             .map_err(|_| crate::error::Error::from(crate::error::InternalServerError))?
     }
 
-    pub async fn find_session_media(
+    pub async fn find_session(
         &mut self,
         session_id: session::Id,
-    ) -> Result<media::Controller<media::controller::Client>, crate::error::Error> {
+    ) -> Result<
+        (
+            media::Controller<media::controller::Client>,
+            super::PresentationURI,
+        ),
+        crate::error::Error,
+    > {
         let (sender, receiver) = oneshot::channel();
 
         if let Err(_) = self
             .sender
             .send(
-                ClientMessage::FindSessionMedia {
+                ClientMessage::FindSession {
                     client_id: self.context.id,
                     session_id,
                     ret: sender,

@@ -54,7 +54,7 @@ pub trait MediaFactory: Send + 'static {
     fn options(
         &mut self,
         ctx: &mut Context<Self>,
-        uri: url::Url,
+        stream_id: Option<media::StreamId>,
         supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         extra_data: TypeMap,
@@ -78,34 +78,15 @@ pub trait MediaFactory: Send + 'static {
     fn describe(
         &mut self,
         ctx: &mut Context<Self>,
-        uri: url::Url,
         extra_data: TypeMap,
     ) -> Pin<
         Box<dyn Future<Output = Result<(sdp_types::Session, TypeMap), crate::error::Error>> + Send>,
-    >;
-
-    /// Return the presentation URI for the media at the given URI.
-    fn find_presentation_uri(
-        &mut self,
-        ctx: &mut Context<Self>,
-        uri: url::Url,
-        extra_data: TypeMap,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        (url::Url, Option<media::StreamId>, TypeMap),
-                        crate::error::Error,
-                    >,
-                > + Send,
-        >,
     >;
 
     /// Create a new media for a client.
     fn create_media(
         &mut self,
         ctx: &mut Context<Self>,
-        uri: url::Url,
         client_id: client::Id,
         extra_data: TypeMap,
     ) -> Pin<

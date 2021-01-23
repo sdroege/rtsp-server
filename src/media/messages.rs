@@ -40,6 +40,7 @@ pub(super) enum ClientMessage {
     },
     Options {
         client_id: client::Id,
+        stream_id: Option<super::StreamId>,
         supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         extra_data: TypeMap,
@@ -88,6 +89,7 @@ pub(super) enum ClientMessage {
     Play {
         client_id: client::Id,
         session_id: server::SessionId,
+        stream_id: Option<super::StreamId>,
         range: Option<rtsp_types::headers::Range>,
         extra_data: TypeMap,
         #[derivative(Debug = "ignore")]
@@ -105,6 +107,7 @@ pub(super) enum ClientMessage {
     Pause {
         client_id: client::Id,
         session_id: server::SessionId,
+        stream_id: Option<super::StreamId>,
         extra_data: TypeMap,
         #[derivative(Debug = "ignore")]
         ret: oneshot::Sender<Result<(rtsp_types::headers::Range, TypeMap), crate::error::Error>>,
@@ -122,6 +125,7 @@ impl From<ClientMessage> for ControllerMessage {
 pub(super) enum MediaFactoryMessage {
     Options {
         media_factory_id: media_factory::Id,
+        stream_id: Option<super::StreamId>,
         supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         extra_data: TypeMap,

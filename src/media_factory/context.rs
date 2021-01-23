@@ -53,6 +53,7 @@ impl<MF: MediaFactory + ?Sized> MediaHandle<MF> {
     /// Query OPTIONS from the media.
     pub async fn options(
         &mut self,
+        stream_id: Option<media::StreamId>,
         supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         extra_data: TypeMap,
@@ -80,7 +81,9 @@ impl<MF: MediaFactory + ?Sized> MediaHandle<MF> {
 
                 async move {
                     if found {
-                        let res = controller.options(supported, require, extra_data).await;
+                        let res = controller
+                            .options(stream_id, supported, require, extra_data)
+                            .await;
                         trace!(
                             "Media Factory {}: Media {} returned OPTIONS: {:?}",
                             controller.media_factory_id(),

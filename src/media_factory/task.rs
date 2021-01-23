@@ -168,15 +168,16 @@ async fn task_fn<MF: MediaFactory>(
             MediaFactoryMessage::Controller(ControllerMessage::Client(msg)) => match msg {
                 ClientMessage::Options {
                     client_id,
-                    uri,
+                    stream_id,
                     supported,
                     require,
                     extra_data,
                     ret,
                 } => {
-                    debug!("MediaFactory {}: Options for URI {} from client {}, supported {:?}, require {:?}", ctx.id, uri, client_id, supported, require);
+                    debug!("MediaFactory {}: Options for stream id {:?} from client {}, supported {:?}, require {:?}", ctx.id, stream_id, client_id, supported, require);
 
-                    let fut = media_factory.options(&mut ctx, uri, supported, require, extra_data);
+                    let fut =
+                        media_factory.options(&mut ctx, stream_id, supported, require, extra_data);
                     task::spawn(async move {
                         let res = fut.await;
 
@@ -189,16 +190,15 @@ async fn task_fn<MF: MediaFactory>(
                 }
                 ClientMessage::Describe {
                     client_id,
-                    uri,
                     extra_data,
                     ret,
                 } => {
                     debug!(
-                        "MediaFactory {}: Describe for URI {} from client {}",
-                        ctx.id, uri, client_id
+                        "MediaFactory {}: Describe from client {}",
+                        ctx.id, client_id
                     );
 
-                    let fut = media_factory.describe(&mut ctx, uri, extra_data);
+                    let fut = media_factory.describe(&mut ctx, extra_data);
                     task::spawn(async move {
                         let res = fut.await;
 
@@ -209,40 +209,17 @@ async fn task_fn<MF: MediaFactory>(
                         let _ = ret.send(res);
                     });
                 }
-                ClientMessage::FindPresentationURI {
-                    client_id,
-                    uri,
-                    extra_data,
-                    ret,
-                } => {
-                    debug!(
-                        "MediaFactory {}: Finding presentation URI for URI {} from client {}",
-                        ctx.id, uri, client_id
-                    );
-
-                    let fut = media_factory.find_presentation_uri(&mut ctx, uri, extra_data);
-                    task::spawn(async move {
-                        let res = fut.await;
-
-                        debug!(
-                            "MediaFactory {}: Finding presentation URI from client {}, returned {:?}",
-                            id, client_id, res
-                        );
-                        let _ = ret.send(res);
-                    });
-                }
                 ClientMessage::CreateMedia {
                     client_id,
-                    uri,
                     extra_data,
                     ret,
                 } => {
                     debug!(
-                        "MediaFactory {}: Create media for URI {} from client {}",
-                        ctx.id, uri, client_id
+                        "MediaFactory {}: Create media from client {}",
+                        ctx.id, client_id
                     );
 
-                    let fut = media_factory.create_media(&mut ctx, uri, client_id, extra_data);
+                    let fut = media_factory.create_media(&mut ctx, client_id, extra_data);
                     task::spawn(async move {
                         let res = fut.await;
 

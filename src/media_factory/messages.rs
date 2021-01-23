@@ -14,7 +14,7 @@ use super::context::Context;
 pub(super) enum ClientMessage {
     Options {
         client_id: client::Id,
-        uri: url::Url,
+        stream_id: Option<media::StreamId>,
         supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         extra_data: TypeMap,
@@ -33,23 +33,12 @@ pub(super) enum ClientMessage {
     },
     Describe {
         client_id: client::Id,
-        uri: url::Url,
         extra_data: TypeMap,
         #[derivative(Debug = "ignore")]
         ret: oneshot::Sender<Result<(sdp_types::Session, TypeMap), crate::error::Error>>,
     },
-    FindPresentationURI {
-        client_id: client::Id,
-        uri: url::Url,
-        extra_data: TypeMap,
-        #[derivative(Debug = "ignore")]
-        ret: oneshot::Sender<
-            Result<(url::Url, Option<media::StreamId>, TypeMap), crate::error::Error>,
-        >,
-    },
     CreateMedia {
         client_id: client::Id,
-        uri: url::Url,
         extra_data: TypeMap,
         #[derivative(Debug = "ignore")]
         ret: oneshot::Sender<

@@ -1,6 +1,5 @@
 use rtsp_server::body::Body;
 use rtsp_server::client::basic_client;
-use rtsp_server::client::Context;
 use rtsp_server::error::Error;
 use rtsp_server::server::Server;
 use rtsp_server::stream_handler::MessageHandler;
@@ -139,6 +138,7 @@ impl rtsp_server::media::Media for Media {
         &mut self,
         _ctx: &mut rtsp_server::media::Context<Self>,
         _client_id: Option<rtsp_server::client::Id>,
+        _stream_id: Option<rtsp_server::media::StreamId>,
         _supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         _extra_data: rtsp_server::typemap::TypeMap,
@@ -328,6 +328,7 @@ impl rtsp_server::media::Media for Media {
         ctx: &mut rtsp_server::media::Context<Self>,
         _client_id: rtsp_server::client::Id,
         session_id: rtsp_server::server::SessionId,
+        _stream_id: Option<rtsp_server::media::StreamId>,
         range: Option<rtsp_types::headers::Range>,
         extra_data: rtsp_server::typemap::TypeMap,
     ) -> Pin<
@@ -454,6 +455,7 @@ impl rtsp_server::media::Media for Media {
         _ctx: &mut rtsp_server::media::Context<Self>,
         _client_id: rtsp_server::client::Id,
         _session_id: rtsp_server::server::SessionId,
+        _stream_id: Option<rtsp_server::media::StreamId>,
         _extra_data: rtsp_server::typemap::TypeMap,
     ) -> Pin<
         Box<
@@ -548,7 +550,7 @@ impl rtsp_server::media_factory::MediaFactory for MediaFactory {
     fn options(
         &mut self,
         _ctx: &mut rtsp_server::media_factory::Context<Self>,
-        _uri: rtsp_types::Url,
+        _stream_id: Option<rtsp_server::media::StreamId>,
         _supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         _extra_data: rtsp_server::typemap::TypeMap,
@@ -605,7 +607,6 @@ impl rtsp_server::media_factory::MediaFactory for MediaFactory {
     fn describe(
         &mut self,
         _ctx: &mut rtsp_server::media_factory::Context<Self>,
-        _uri: rtsp_types::Url,
         _extra_data: rtsp_server::typemap::TypeMap,
     ) -> Pin<
         Box<
@@ -620,7 +621,6 @@ impl rtsp_server::media_factory::MediaFactory for MediaFactory {
     fn create_media(
         &mut self,
         ctx: &mut rtsp_server::media_factory::Context<Self>,
-        _uri: rtsp_types::Url,
         client_id: rtsp_server::client::Id,
         _extra_data: rtsp_server::typemap::TypeMap,
     ) -> Pin<
@@ -968,54 +968,6 @@ impl rtsp_server::media_factory::MediaFactory for MediaFactory {
 
             Ok(Default::default())
         })
-    }
-
-    fn find_presentation_uri(
-        &mut self,
-        _ctx: &mut rtsp_server::media_factory::Context<Self>,
-        uri: rtsp_types::Url,
-        _extra_data: rtsp_server::typemap::TypeMap,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        (
-                            rtsp_types::Url,
-                            Option<rtsp_server::media::StreamId>,
-                            rtsp_server::typemap::TypeMap,
-                        ),
-                        Error,
-                    >,
-                > + Send,
-        >,
-    > {
-        // FIXME: Need API on the media to query the stream ids
-        let path = uri.path();
-
-        // FIXME: This all is duplicated here and in the mounts
-        if !path.starts_with(&self.base_path) {
-            return Box::pin(async {
-                Err(rtsp_server::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound).into())
-            });
-        }
-
-        let mut presentation_uri = uri.clone();
-        presentation_uri.set_query(None);
-        presentation_uri.set_fragment(None);
-
-        let stream_id = if path == &format!("{}/audio", self.base_path) {
-            Some(rtsp_server::media::StreamId::from("audio"))
-        } else if path == &format!("{}/video", self.base_path) {
-            Some(rtsp_server::media::StreamId::from("video"))
-        } else if path == &format!("{}/", self.base_path) || path == &self.base_path {
-            None
-        } else {
-            return Box::pin(async {
-                Err(rtsp_server::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound).into())
-            });
-        };
-
-        return Box::pin(async { Ok((presentation_uri, stream_id, Default::default())) });
     }
 }
 

@@ -63,7 +63,7 @@ impl Controller<Client> {
 
     pub async fn options(
         &mut self,
-        uri: url::Url,
+        stream_id: Option<media::StreamId>,
         supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         extra_data: TypeMap,
@@ -83,7 +83,7 @@ impl Controller<Client> {
             .send(
                 ClientMessage::Options {
                     client_id: self.context.id,
-                    uri,
+                    stream_id,
                     supported,
                     require,
                     extra_data,
@@ -103,7 +103,6 @@ impl Controller<Client> {
 
     pub async fn describe(
         &mut self,
-        uri: url::Url,
         extra_data: TypeMap,
     ) -> Result<(sdp_types::Session, TypeMap), crate::error::Error> {
         let (sender, receiver) = oneshot::channel();
@@ -113,35 +112,6 @@ impl Controller<Client> {
             .send(
                 ClientMessage::Describe {
                     client_id: self.context.id,
-                    uri,
-                    extra_data,
-                    ret: sender,
-                }
-                .into(),
-            )
-            .await
-        {
-            return Err(crate::error::InternalServerError.into());
-        }
-
-        receiver
-            .await
-            .map_err(|_| crate::error::Error::from(crate::error::InternalServerError))?
-    }
-
-    pub async fn find_presentation_uri(
-        &mut self,
-        uri: url::Url,
-        extra_data: TypeMap,
-    ) -> Result<(url::Url, Option<media::StreamId>, TypeMap), crate::error::Error> {
-        let (sender, receiver) = oneshot::channel();
-
-        if let Err(_) = self
-            .sender
-            .send(
-                ClientMessage::FindPresentationURI {
-                    client_id: self.context.id,
-                    uri,
                     extra_data,
                     ret: sender,
                 }
@@ -159,7 +129,6 @@ impl Controller<Client> {
 
     pub async fn create_media(
         &mut self,
-        uri: url::Url,
         extra_data: TypeMap,
     ) -> Result<(media::Controller<media::controller::Client>, TypeMap), crate::error::Error> {
         let (sender, receiver) = oneshot::channel();
@@ -169,7 +138,6 @@ impl Controller<Client> {
             .send(
                 ClientMessage::CreateMedia {
                     client_id: self.context.id,
-                    uri,
                     extra_data,
                     ret: sender,
                 }

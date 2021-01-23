@@ -159,7 +159,7 @@ async fn task_fn<C: Client>(
                         if ctx.sessions.contains_key(&session_id) {
                             debug!("Client {}: Session timeout {}", ctx.id, session_id);
                             client.session_timed_out(&mut ctx, session_id.clone());
-                            if let Some((media_id, pipelined_request, channel_ids)) =
+                            if let Some((media_id, _, pipelined_request, channel_ids)) =
                                 ctx.sessions.remove(&session_id)
                             {
                                 if let Some(pipelined_request) = pipelined_request {
@@ -183,7 +183,7 @@ async fn task_fn<C: Client>(
                         if ctx.sessions.contains_key(&session_id) {
                             debug!("Client {}: Session client replaced {}", ctx.id, session_id);
                             client.session_replaced_client(&mut ctx, session_id.clone());
-                            if let Some((media_id, pipelined_request, channel_ids)) =
+                            if let Some((media_id, _, pipelined_request, channel_ids)) =
                                 ctx.sessions.remove(&session_id)
                             {
                                 if let Some(pipelined_request) = pipelined_request {
@@ -219,7 +219,7 @@ async fn task_fn<C: Client>(
                 } => {
                     let n_receivers = receivers.len();
 
-                    if let Some((session_media_id, _, _)) = ctx.sessions.get(&session_id) {
+                    if let Some((session_media_id, _, _, _)) = ctx.sessions.get(&session_id) {
                         if media_id == *session_media_id {
                             debug!(
                                 "Client {}: Media {} registering {} interleaved channels starting at {:?} for session {}",
@@ -274,7 +274,7 @@ async fn task_fn<C: Client>(
                     }
                 }
                 MediaMessage::PlayNotify(media_id, session_id, play_notify) => {
-                    if let Some((session_media_id, _, _)) = ctx.sessions.get(&session_id) {
+                    if let Some((session_media_id, _, _, _)) = ctx.sessions.get(&session_id) {
                         if media_id == *session_media_id {
                             debug!(
                                 "Client {}: Media {} session {} play notify message {:?}",
@@ -303,7 +303,7 @@ async fn task_fn<C: Client>(
                     }
 
                     if let Some((_, session_id)) = ctx.session_medias.remove(&media_id) {
-                        if let Some((_, pipelined_request, channel_ids)) =
+                        if let Some((_, _, pipelined_request, channel_ids)) =
                             ctx.sessions.remove(&session_id)
                         {
                             if let Some(pipelined_request) = pipelined_request {
@@ -329,7 +329,7 @@ async fn task_fn<C: Client>(
                     }
 
                     if let Some((_, session_id)) = ctx.session_medias.remove(&media_id) {
-                        if let Some((_, pipelined_request, channel_ids)) =
+                        if let Some((_, _, pipelined_request, channel_ids)) =
                             ctx.sessions.remove(&session_id)
                         {
                             if let Some(pipelined_request) = pipelined_request {
@@ -512,7 +512,7 @@ async fn task_fn<C: Client>(
                                     if let Some(ref session_id) = session_id {
                                         debug!("Client {}: Checking if session {} is known to the server", id, session_id.as_ref());
                                         let session_id = server::SessionId::from(session_id.as_ref());
-                                        if handle.find_server_session_media(&session_id).await.is_err() {
+                                        if handle.find_session(&session_id).await.is_err() {
                                             warn!("Client {}: Session {} is not known to the server", id, session_id.as_ref());
                                             let resp = rtsp_types::Response::builder(
                                                 version,
@@ -574,7 +574,7 @@ async fn task_fn<C: Client>(
                                         if (!resp.status().is_client_error() &&
                                             resp.status().is_server_error() &&
                                                 req.method() != rtsp_types::Method::Teardown) ||
-                                                handle.find_server_session_media(&session_id).await.is_ok() {
+                                                handle.find_session(&session_id).await.is_ok() {
                                             resp.insert_header(rtsp_types::headers::SESSION, session_id.as_ref());
                                         }
                                     }

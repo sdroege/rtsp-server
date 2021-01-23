@@ -131,6 +131,7 @@ impl Controller<Client> {
 
     pub async fn options(
         &mut self,
+        stream_id: Option<super::StreamId>,
         supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         extra_data: TypeMap,
@@ -149,6 +150,7 @@ impl Controller<Client> {
             .send(
                 ClientMessage::Options {
                     client_id: self.context.id,
+                    stream_id,
                     supported,
                     require,
                     extra_data,
@@ -285,6 +287,7 @@ impl Controller<Client> {
     pub async fn play(
         &mut self,
         session_id: server::SessionId,
+        stream_id: Option<super::StreamId>,
         range: Option<rtsp_types::headers::Range>,
         extra_data: TypeMap,
     ) -> Result<
@@ -303,6 +306,7 @@ impl Controller<Client> {
                 ClientMessage::Play {
                     client_id: self.context.id,
                     session_id,
+                    stream_id,
                     range,
                     extra_data,
                     ret: sender,
@@ -322,6 +326,7 @@ impl Controller<Client> {
     pub async fn pause(
         &mut self,
         session_id: server::SessionId,
+        stream_id: Option<super::StreamId>,
         extra_data: TypeMap,
     ) -> Result<(rtsp_types::headers::Range, TypeMap), crate::error::Error> {
         let (sender, receiver) = oneshot::channel();
@@ -332,6 +337,7 @@ impl Controller<Client> {
                 ClientMessage::Pause {
                     client_id: self.context.id,
                     session_id,
+                    stream_id,
                     extra_data,
                     ret: sender,
                 }
@@ -388,7 +394,7 @@ impl Controller<MediaFactory> {
 
     pub async fn options(
         &mut self,
-
+        stream_id: Option<super::StreamId>,
         supported: rtsp_types::headers::Supported,
         require: rtsp_types::headers::Require,
         extra_data: TypeMap,
@@ -407,6 +413,7 @@ impl Controller<MediaFactory> {
             .send(
                 MediaFactoryMessage::Options {
                     media_factory_id: self.context.0.id,
+                    stream_id,
                     supported,
                     require,
                     extra_data,

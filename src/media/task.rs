@@ -78,6 +78,7 @@ async fn task_fn<M: Media>(
                 }
                 MediaFactoryMessage::Options {
                     media_factory_id,
+                    stream_id,
                     supported,
                     require,
                     extra_data,
@@ -88,7 +89,8 @@ async fn task_fn<M: Media>(
                         ctx.id, media_factory_id, supported, require
                     );
 
-                    let fut = media.options(&mut ctx, None, supported, require, extra_data);
+                    let fut =
+                        media.options(&mut ctx, None, stream_id, supported, require, extra_data);
                     task::spawn(async move {
                         let res = fut.await;
 
@@ -231,6 +233,7 @@ async fn task_fn<M: Media>(
                 }
                 ClientMessage::Options {
                     client_id,
+                    stream_id,
                     supported,
                     require,
                     extra_data,
@@ -243,8 +246,14 @@ async fn task_fn<M: Media>(
                         supported,
                         require
                     );
-                    let fut =
-                        media.options(&mut ctx, Some(client_id), supported, require, extra_data);
+                    let fut = media.options(
+                        &mut ctx,
+                        Some(client_id),
+                        stream_id,
+                        supported,
+                        require,
+                        extra_data,
+                    );
                     task::spawn(async move {
                         let res = fut.await;
                         trace!(
@@ -401,6 +410,7 @@ async fn task_fn<M: Media>(
                 ClientMessage::Play {
                     client_id,
                     session_id,
+                    stream_id,
                     range,
                     extra_data,
                     ret,
@@ -416,8 +426,14 @@ async fn task_fn<M: Media>(
                     if let Err(err) = ctx.is_client_in_session(client_id, &session_id) {
                         let _ = ret.send(Err(err));
                     } else {
-                        let fut =
-                            media.play(&mut ctx, client_id, session_id.clone(), range, extra_data);
+                        let fut = media.play(
+                            &mut ctx,
+                            client_id,
+                            session_id.clone(),
+                            stream_id,
+                            range,
+                            extra_data,
+                        );
                         task::spawn(async move {
                             let res = fut.await;
                             trace!(
@@ -434,6 +450,7 @@ async fn task_fn<M: Media>(
                 ClientMessage::Pause {
                     client_id,
                     session_id,
+                    stream_id,
                     extra_data,
                     ret,
                 } => {
@@ -447,7 +464,13 @@ async fn task_fn<M: Media>(
                     if let Err(err) = ctx.is_client_in_session(client_id, &session_id) {
                         let _ = ret.send(Err(err));
                     } else {
-                        let fut = media.pause(&mut ctx, client_id, session_id.clone(), extra_data);
+                        let fut = media.pause(
+                            &mut ctx,
+                            client_id,
+                            session_id.clone(),
+                            stream_id,
+                            extra_data,
+                        );
                         task::spawn(async move {
                             let res = fut.await;
                             trace!(
