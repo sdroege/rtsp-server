@@ -398,7 +398,15 @@ async fn task_fn<C: Client>(
                     req.typed_header::<CSeq>(),
                     req.typed_header::<rtsp_types::headers::Session>(),
                 ) {
-                    (Ok(Some(cseq)), Ok(session_id)) => (*cseq, session_id),
+                    // The Session header must not be included in DESCRIBE requests
+                    (Ok(Some(cseq)), Ok(None)) if req.method() == rtsp_types::Method::Describe => {
+                        (*cseq, None)
+                    }
+                    (Ok(Some(cseq)), Ok(session_id))
+                        if req.method() != rtsp_types::Method::Describe =>
+                    {
+                        (*cseq, session_id)
+                    }
                     _ => {
                         warn!(
                             "Client {}: No valid CSeq in request or invalid Session",
