@@ -111,6 +111,17 @@ impl<'a> From<&'a str> for StreamId {
 
 impl From<String> for StreamId {
     fn from(s: String) -> Self {
+        {
+            // Don't allow .. in the path part of the relative URI
+            let path_end_idx = s.find('?').or_else(|| s.find('#'));
+            let s = if let Some(path_end_idx) = path_end_idx {
+                s.split_at(path_end_idx).0
+            } else {
+                &s[..]
+            };
+            assert!(!s.contains(".."));
+        }
+
         StreamId(Arc::new(s))
     }
 }
