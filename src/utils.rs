@@ -15,34 +15,6 @@ impl Drop for RunOnDrop {
     }
 }
 
-pub fn extract_control_from_uri(
-    presentation_uri: &url::Url,
-    control_uri: &url::Url,
-) -> Option<String> {
-    // Special case: control URI is actually the presentation URI with or without trailing '/'.
-    if presentation_uri.path().starts_with(control_uri.path())
-        && (control_uri.path().len() == presentation_uri.path().len()
-            || (control_uri.path().len() + 1 == presentation_uri.path().len()
-                && presentation_uri.path().ends_with('/')))
-    {
-        return Some(String::new());
-    }
-
-    // If the control URI is smaller then there's nothing to return
-    if control_uri.path().len() < presentation_uri.path().len() {
-        return None;
-    }
-
-    let relative = presentation_uri.make_relative(control_uri)?;
-
-    // Must not go a level up
-    if relative.starts_with('.') {
-        return None;
-    }
-
-    Some(relative)
-}
-
 /// Extension trait for [`url::Url`]
 pub trait UrlExt {
     /// Returns `url` relative to `self` if `self` is a base of it.

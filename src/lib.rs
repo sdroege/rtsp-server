@@ -78,4 +78,4 @@ pub use either::Either;
 pub use rtsp_types as types;
 pub use url::Url;
 
-pub use utils::{extract_control_from_uri, UrlExt};
+pub use utils::UrlExt;

@@ -85,6 +85,14 @@ impl StreamId {
     }
 }
 
+impl std::ops::Deref for StreamId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
 impl AsRef<str> for StreamId {
     fn as_ref(&self) -> &str {
         self.0.as_str()
@@ -154,6 +162,38 @@ pub fn stream_ids_from_sdp(
     }
 
     Ok(stream_ids)
+}
+
+pub fn extract_stream_id_from_uri(
+    presentation_uri: &url::Url,
+    control_uri: &url::Url,
+) -> Result<Option<StreamId>, crate::error::Error> {
+    use crate::UrlExt;
+
+    // Special case: control URI is actually the presentation URI with or without trailing '/'.
+    if presentation_uri.path().starts_with(control_uri.path())
+        && (control_uri.path().len() == presentation_uri.path().len()
+            || (control_uri.path().len() + 1 == presentation_uri.path().len()
+                && presentation_uri.path().ends_with('/')))
+    {
+        return Ok(None);
+    }
+
+    // If the control URI is smaller then there's nothing to return
+    if control_uri.path().len() < presentation_uri.path().len() {
+        return Err(crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound).into());
+    }
+
+    let relative = presentation_uri
+        .make_relative(control_uri)
+        .ok_or_else(|| crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound))?;
+
+    // Must not go a level up
+    if relative.starts_with('.') {
+        return Err(crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound).into());
+    }
+
+    Ok(Some(StreamId::from(relative)))
 }
 
 /// RTSP `Media`

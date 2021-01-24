@@ -7,6 +7,7 @@ use log::warn;
 use crate::body::Body;
 use crate::client;
 use crate::error;
+use crate::media;
 use crate::server;
 
 #[derive(Debug)]
@@ -97,15 +98,7 @@ impl Client {
                     .into());
                 }
 
-                let stream_id = crate::extract_control_from_uri(&presentation_uri, request_uri)
-                    .ok_or_else(|| {
-                        crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound)
-                    })?;
-                let stream_id = if stream_id.is_empty() {
-                    None
-                } else {
-                    Some(crate::media::StreamId::from(stream_id))
-                };
+                let stream_id = media::extract_stream_id_from_uri(&presentation_uri, request_uri)?;
 
                 extra_data.insert(presentation_uri);
                 extra_data.insert(session_id);
@@ -127,15 +120,7 @@ impl Client {
                     .find_media_factory_for_uri(request_uri.clone(), extra_data.clone())
                     .await?;
 
-                let stream_id = crate::extract_control_from_uri(&presentation_uri, request_uri)
-                    .ok_or_else(|| {
-                        crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound)
-                    })?;
-                let stream_id = if stream_id.is_empty() {
-                    None
-                } else {
-                    Some(crate::media::StreamId::from(stream_id))
-                };
+                let stream_id = media::extract_stream_id_from_uri(&presentation_uri, request_uri)?;
 
                 extra_data.insert(presentation_uri);
 
@@ -223,13 +208,10 @@ impl Client {
                     .find_media_factory_for_uri(request_uri.clone(), extra_data.clone())
                     .await?;
 
-                let stream_id = crate::extract_control_from_uri(&presentation_uri, request_uri)
-                    .ok_or_else(|| {
-                        crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound)
-                    })?;
+                let stream_id = media::extract_stream_id_from_uri(&presentation_uri, request_uri)?;
 
                 // Must be for the presentation URI!
-                if !stream_id.is_empty() {
+                if !stream_id.is_none() {
                     return Err(
                         crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound).into(),
                     );
@@ -331,16 +313,10 @@ impl Client {
                         .into());
                     }
 
-                    let stream_id = crate::extract_control_from_uri(&presentation_uri, uri)
+                    let stream_id = media::extract_stream_id_from_uri(&presentation_uri, uri)?
                         .ok_or_else(|| {
                             crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound)
                         })?;
-                    if stream_id.is_empty() {
-                        return Err(crate::error::ErrorStatus::from(
-                            rtsp_types::StatusCode::NotFound,
-                        )
-                        .into());
-                    }
 
                     (media, presentation_uri, stream_id, session_id)
                 } else {
@@ -351,16 +327,10 @@ impl Client {
 
                         extra_data.insert(presentation_uri.clone());
 
-                        let stream_id = crate::extract_control_from_uri(&presentation_uri, uri)
+                        let stream_id = media::extract_stream_id_from_uri(&presentation_uri, uri)?
                             .ok_or_else(|| {
                                 crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound)
                             })?;
-                        if stream_id.is_empty() {
-                            return Err(crate::error::ErrorStatus::from(
-                                rtsp_types::StatusCode::NotFound,
-                            )
-                            .into());
-                        }
 
                         let (media, _) = media_factory.create_media(extra_data.clone()).await?;
                         let session_id = handle
@@ -496,14 +466,8 @@ impl Client {
             extra_data.insert(session_id.clone());
             extra_data.insert(presentation_uri.clone());
 
-            let stream_id = crate::extract_control_from_uri(&presentation_uri, uri)
-                .ok_or_else(|| crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound))?;
-            let stream_id = if stream_id.is_empty() {
-                None
-            } else {
-                Some(crate::media::StreamId::from(stream_id))
-            };
-
+            let stream_id = media::extract_stream_id_from_uri(&presentation_uri, uri)?;
+            // TODO: Allow aggregate control
             if stream_id.is_some() {
                 return Err(
                     error::ErrorStatus::from(rtsp_types::StatusCode::MethodNotAllowed).into(),
@@ -584,14 +548,8 @@ impl Client {
             extra_data.insert(session_id.clone());
             extra_data.insert(presentation_uri.clone());
 
-            let stream_id = crate::extract_control_from_uri(&presentation_uri, uri)
-                .ok_or_else(|| crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound))?;
-            let stream_id = if stream_id.is_empty() {
-                None
-            } else {
-                Some(crate::media::StreamId::from(stream_id))
-            };
-
+            let stream_id = media::extract_stream_id_from_uri(&presentation_uri, uri)?;
+            // TODO: Allow aggregate control
             if stream_id.is_some() {
                 return Err(
                     error::ErrorStatus::from(rtsp_types::StatusCode::MethodNotAllowed).into(),
@@ -658,13 +616,7 @@ impl Client {
             extra_data.insert(session_id.clone());
             extra_data.insert(presentation_uri.clone());
 
-            let stream_id = crate::extract_control_from_uri(&presentation_uri, uri)
-                .ok_or_else(|| crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound))?;
-            let stream_id = if stream_id.is_empty() {
-                None
-            } else {
-                Some(crate::media::StreamId::from(stream_id))
-            };
+            let stream_id = media::extract_stream_id_from_uri(&presentation_uri, uri)?;
 
             if let Some(ref stream_id) = stream_id {
                 media
