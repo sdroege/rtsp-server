@@ -219,7 +219,7 @@ impl<C: Client + ?Sized> MediaHandle<C> {
         stream_id: media::StreamId,
         transports: rtsp_types::headers::Transports,
         extra_data: TypeMap,
-    ) -> Result<media::ConfiguredTransport, crate::error::Error> {
+    ) -> Result<(rtsp_types::headers::RtpTransport, TypeMap), crate::error::Error> {
         trace!(
             "Client {}: Adding transport {:?} to media {} with session {} and stream {}",
             self.controller.client_id(),

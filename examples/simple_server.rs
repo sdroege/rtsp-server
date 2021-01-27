@@ -199,8 +199,19 @@ impl rtsp_server::media::Media for Media {
         stream_id: rtsp_server::media::StreamId,
         transports: rtsp_types::headers::Transports,
         _extra_data: rtsp_server::typemap::TypeMap,
-    ) -> Pin<Box<dyn Future<Output = Result<rtsp_server::media::ConfiguredTransport, Error>> + Send>>
-    {
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        (
+                            rtsp_types::headers::RtpTransport,
+                            rtsp_server::typemap::TypeMap,
+                        ),
+                        Error,
+                    >,
+                > + Send,
+        >,
+    > {
         let mut client = match ctx.find_session_client(&session_id) {
             Some(client) => client,
             None => {
@@ -309,15 +320,7 @@ impl rtsp_server::media::Media for Media {
             drop(rtp_sender);
             drop(rtcp_sender);
 
-            let configured_transport = rtsp_server::media::ConfiguredTransport {
-                session_id,
-                media_id: handle.id(),
-                stream_id,
-                extra_data: Default::default(),
-                transport: suitable_transport.clone(),
-            };
-
-            Ok(configured_transport)
+            Ok((suitable_transport, Default::default()))
         };
 
         Box::pin(fut)

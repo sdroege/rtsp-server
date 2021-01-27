@@ -69,7 +69,9 @@ pub(super) enum ClientMessage {
         transports: rtsp_types::headers::Transports,
         extra_data: TypeMap,
         #[derivative(Debug = "ignore")]
-        ret: oneshot::Sender<Result<super::ConfiguredTransport, crate::error::Error>>,
+        ret: oneshot::Sender<
+            Result<(rtsp_types::headers::RtpTransport, TypeMap), crate::error::Error>,
+        >,
     },
     RemoveTransport {
         client_id: client::Id,

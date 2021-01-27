@@ -200,7 +200,7 @@ impl Controller<Client> {
         stream_id: super::StreamId,
         transports: rtsp_types::headers::Transports,
         extra_data: TypeMap,
-    ) -> Result<super::ConfiguredTransport, crate::error::Error> {
+    ) -> Result<(rtsp_types::headers::RtpTransport, TypeMap), crate::error::Error> {
         let (sender, receiver) = oneshot::channel();
 
         if let Err(_) = self

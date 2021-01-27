@@ -378,9 +378,8 @@ impl Client {
                 )
                 .await
             {
-                Ok(configured_transport) => {
-                    let transports =
-                        Transports::from(vec![Transport::Rtp(configured_transport.transport)]);
+                Ok((transport, _extra_data)) => {
+                    let transports = Transports::from(vec![Transport::Rtp(transport)]);
 
                     // TODO: Convert 1.0/2.0 transports for UDP by splitting/combining IP:port and
                     // the separate fields

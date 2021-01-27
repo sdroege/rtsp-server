@@ -51,24 +51,6 @@ impl Id {
     }
 }
 
-/// Previously configured transport.
-#[derive(Debug, Clone)]
-pub struct ConfiguredTransport {
-    pub session_id: server::SessionId,
-    pub media_id: Id,
-    pub stream_id: StreamId,
-    pub extra_data: TypeMap,
-    pub transport: rtsp_types::headers::RtpTransport,
-}
-
-impl PartialEq for ConfiguredTransport {
-    fn eq(&self, other: &Self) -> bool {
-        self.session_id == other.session_id
-            && self.media_id == other.media_id
-            && self.stream_id == other.stream_id
-    }
-}
-
 /// Stream ID.
 ///
 /// Equal to the control attribute of the SDP.
@@ -248,7 +230,11 @@ pub trait Media: Send + 'static {
         Box<
             dyn Future<
                     Output = Result<
-                        ConfiguredTransport, /* TODO: Accept-Ranges, Media-Properties */
+                        (
+                            rtsp_types::headers::RtpTransport,
+                            TypeMap,
+                            /* TODO: Accept-Ranges, Media-Properties */
+                        ),
                         crate::error::Error,
                     >,
                 > + Send,
