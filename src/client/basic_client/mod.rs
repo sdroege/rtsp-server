@@ -197,14 +197,18 @@ impl Client {
         let mut handle = ctx.handle();
         let fut = async move {
             if let Some(request_uri) = req.request_uri() {
-                if let Some(accept) = req.header(&rtsp_types::headers::ACCEPT) {
-                    if accept
-                        .as_str()
-                        .split(',')
-                        .map(str::trim)
-                        .find(|f| f == &"application/sdp")
-                        .is_none()
-                    {
+                if let Some(accept) =
+                    req.typed_header::<rtsp_types::headers::Accept>()
+                        .map_err(|_| {
+                            crate::error::ErrorStatus::from(rtsp_types::StatusCode::BadRequest)
+                        })?
+                {
+                    if !accept.iter().any(|media_type| {
+                        (media_type.type_ == Some(rtsp_types::headers::MediaType::Application)
+                            && (media_type.subtype.as_deref() == Some("sdp")
+                                || media_type.subtype.is_none()))
+                            || media_type.type_.is_none()
+                    }) {
                         return Ok(rtsp_types::Response::builder(
                             req.version(),
                             rtsp_types::StatusCode::NotAcceptable,
@@ -237,7 +241,11 @@ impl Client {
 
                 let mut resp =
                     rtsp_types::Response::builder(req.version(), rtsp_types::StatusCode::Ok)
-                        .header(rtsp_types::headers::CONTENT_TYPE, "application/sdp")
+                        .typed_header(&rtsp_types::headers::ContentType {
+                            media_type: rtsp_types::headers::MediaType::Application,
+                            media_subtype: "sdp".into(),
+                            params: Vec::new(),
+                        })
                         .header(
                             rtsp_types::headers::CONTENT_BASE,
                             presentation_uri.to_string(),
