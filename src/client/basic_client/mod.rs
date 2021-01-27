@@ -1,5 +1,7 @@
 use std::pin::Pin;
 
+use async_std::task;
+
 use futures::prelude::*;
 
 use log::warn;
@@ -12,12 +14,12 @@ use crate::server;
 
 #[derive(Debug)]
 pub struct Client {
-    dummy: (),
+    rtsp_version: Option<rtsp_types::Version>,
 }
 
 impl Default for Client {
     fn default() -> Self {
-        Client { dummy: () }
+        Client { rtsp_version: None }
     }
 }
 
@@ -779,6 +781,9 @@ impl client::Client for Client {
         request: client::OriginalRequest,
     ) -> Pin<Box<dyn Future<Output = Result<rtsp_types::Response<Body>, error::Error>> + Send>>
     {
+        // Remember the last used RTSP version
+        self.rtsp_version = Some(request.version());
+
         match request.method() {
             rtsp_types::Method::Options => self.handle_options(ctx, request),
             rtsp_types::Method::Describe => self.handle_describe(ctx, request),
@@ -796,5 +801,89 @@ impl client::Client for Client {
                 .build(Body::default()))
             }),
         }
+    }
+
+    fn media_play_notify(
+        &mut self,
+        ctx: &mut client::Context<Self>,
+        _media_id: media::Id,
+        session_id: server::SessionId,
+        play_notify: media::PlayNotifyMessage,
+    ) {
+        if self.rtsp_version != Some(rtsp_types::Version::V2_0) {
+            return;
+        }
+
+        let mut req =
+            rtsp_types::Request::builder(rtsp_types::Method::PlayNotify, rtsp_types::Version::V2_0)
+                .header(rtsp_types::headers::SESSION, session_id.as_str())
+                .build(Body::default());
+
+        match play_notify {
+            media::PlayNotifyMessage::EndOfStream {
+                range,
+                rtp_info,
+                extra_data,
+            } => {
+                req.insert_typed_header(&rtsp_types::headers::NotifyReason::EndOfStream);
+                req.insert_typed_header(&range);
+                req.insert_typed_header(&rtp_info);
+                if let Some(extra_headers) = extra_data.get::<client::ExtraHeaders>() {
+                    for (name, value) in extra_headers.iter() {
+                        req.insert_header(name.clone(), value.clone());
+                    }
+                }
+            }
+            media::PlayNotifyMessage::MediaPropertiesUpdate {
+                range,
+                media_properties,
+                media_range,
+                extra_data,
+            } => {
+                req.insert_typed_header(&rtsp_types::headers::NotifyReason::MediaPropertiesUpdate);
+                req.insert_typed_header(&range);
+                req.insert_typed_header(&media_properties);
+                req.insert_typed_header(&media_range);
+                if let Some(extra_headers) = extra_data.get::<client::ExtraHeaders>() {
+                    for (name, value) in extra_headers.iter() {
+                        req.insert_header(name.clone(), value.clone());
+                    }
+                }
+            }
+            media::PlayNotifyMessage::ScaleChange {
+                range,
+                media_properties,
+                media_range,
+                scale,
+                rtp_info,
+                extra_data,
+            } => {
+                req.insert_typed_header(&rtsp_types::headers::NotifyReason::MediaPropertiesUpdate);
+                req.insert_typed_header(&range);
+                req.insert_typed_header(&media_properties);
+                req.insert_typed_header(&media_range);
+                req.insert_typed_header(&rtp_info);
+                req.insert_typed_header(&scale);
+                if let Some(extra_headers) = extra_data.get::<client::ExtraHeaders>() {
+                    for (name, value) in extra_headers.iter() {
+                        req.insert_header(name.clone(), value.clone());
+                    }
+                }
+            }
+        }
+
+        let fut = ctx.send_request(req);
+        task::spawn(async move {
+            let _resp = fut.await;
+            // TODO: Do something with the response?
+        });
+    }
+
+    fn media_error(&mut self, _ctx: &mut client::Context<Self>, _media_id: media::Id) {
+        // TODO: Send teardown to the client
+    }
+
+    fn media_finished(&mut self, _ctx: &mut client::Context<Self>, _media_id: media::Id) {
+        // TODO: Send teardown to the client
     }
 }

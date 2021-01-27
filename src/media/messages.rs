@@ -218,7 +218,7 @@ pub enum PlayNotifyMessage {
         range: rtsp_types::headers::Range,
         media_properties: rtsp_types::headers::MediaProperties,
         media_range: rtsp_types::headers::MediaRange,
-        scale: f64,
+        scale: rtsp_types::headers::Scale,
         rtp_info: rtsp_types::headers::RtpInfos,
         extra_data: TypeMap,
     },

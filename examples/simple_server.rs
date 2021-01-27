@@ -93,7 +93,6 @@ impl MessageHandler<gst::Message, ()> for Media {
             }
             MessageView::Eos(_) => {
                 // TODO: Need to provide actual range and end rtptimes, etc
-                // FIXME: Only do this for RTSP 2.0
                 let notify = rtsp_server::media::PlayNotifyMessage::EndOfStream {
                     range: rtsp_types::headers::Range::Npt(rtsp_types::headers::NptRange::FromTo(
                         rtsp_types::headers::NptTime::Seconds(0, None),
@@ -283,7 +282,6 @@ impl rtsp_server::media::Media for Media {
             }
         }
 
-        let handle = ctx.handle();
         let fut = async move {
             let mut data_receiver = Vec::<Box<dyn rtsp_server::client::DataReceiver>>::new();
             data_receiver.push(Box::new(DummyDataReceiver));
