@@ -66,6 +66,7 @@ impl Client {
 
             let resp_allow;
             let resp_supported;
+            let resp_extra_data;
             let mut resp_unsupported;
 
             // Only valid for RTSP 2.0 and only if this is not for a media/session
@@ -76,6 +77,7 @@ impl Client {
                     .setup_rtp_rtcp_mux()
                     .build();
                 resp_unsupported = rtsp_types::headers::Unsupported::builder().build();
+                resp_extra_data = None;
             } else if let Ok(Some(Session(session_id, _))) = req.typed_header::<Session>() {
                 let request_uri = req.request_uri().expect("no URI");
 
@@ -103,7 +105,7 @@ impl Client {
                 extra_data.insert(presentation_uri);
                 extra_data.insert(session_id);
 
-                let (sup, unsup, _) = media
+                let (sup, unsup, extra_data) = media
                     .options(
                         stream_id,
                         req_supported,
@@ -115,6 +117,7 @@ impl Client {
                 resp_supported = sup;
                 resp_unsupported = unsup;
                 resp_allow = None;
+                resp_extra_data = Some(extra_data);
             } else if let Some(request_uri) = req.request_uri() {
                 let (mut media_factory, presentation_uri) = handle
                     .find_media_factory_for_uri(request_uri.clone(), extra_data.clone())
@@ -124,7 +127,7 @@ impl Client {
 
                 extra_data.insert(presentation_uri);
 
-                let (allow, sup, unsup, _) = media_factory
+                let (allow, sup, unsup, extra_data) = media_factory
                     .options(
                         stream_id,
                         req_supported,
@@ -135,8 +138,17 @@ impl Client {
                 resp_supported = sup;
                 resp_unsupported = unsup;
                 resp_allow = Some(allow);
+                resp_extra_data = Some(extra_data);
             } else {
                 unreachable!();
+            }
+
+            if let Some(extra_data) = resp_extra_data {
+                if let Some(extra_headers) = extra_data.get::<client::ExtraHeaders>() {
+                    for (name, value) in extra_headers.iter() {
+                        resp.insert_header(name.clone(), value.clone());
+                    }
+                }
             }
 
             // Check if the request required any features and if we support all of them. Otherwise the
@@ -219,19 +231,26 @@ impl Client {
 
                 extra_data.insert(presentation_uri.clone());
 
-                let (sdp, _) = media_factory.describe(extra_data.clone()).await?;
+                let (sdp, extra_data) = media_factory.describe(extra_data.clone()).await?;
                 let mut sdp_bytes = Vec::new();
                 sdp.write(&mut sdp_bytes).unwrap();
 
-                Ok(
+                let mut resp =
                     rtsp_types::Response::builder(req.version(), rtsp_types::StatusCode::Ok)
                         .header(rtsp_types::headers::CONTENT_TYPE, "application/sdp")
                         .header(
                             rtsp_types::headers::CONTENT_BASE,
                             presentation_uri.to_string(),
                         )
-                        .build(Body::from(sdp_bytes)),
-                )
+                        .build(Body::from(sdp_bytes));
+
+                if let Some(extra_headers) = extra_data.get::<client::ExtraHeaders>() {
+                    for (name, value) in extra_headers.iter() {
+                        resp.insert_header(name.clone(), value.clone());
+                    }
+                }
+
+                Ok(resp)
             } else {
                 Ok(
                     rtsp_types::Response::builder(req.version(), rtsp_types::StatusCode::NotFound)
@@ -332,7 +351,8 @@ impl Client {
                                 crate::error::ErrorStatus::from(rtsp_types::StatusCode::NotFound)
                             })?;
 
-                        let (media, _) = media_factory.create_media(extra_data.clone()).await?;
+                        let (media, _extra_data) =
+                            media_factory.create_media(extra_data.clone()).await?;
                         let session_id = handle
                             .create_session(
                                 presentation_uri.clone(),
@@ -378,7 +398,7 @@ impl Client {
                 )
                 .await
             {
-                Ok((transport, _extra_data)) => {
+                Ok((transport, extra_data)) => {
                     let transports = Transports::from(vec![Transport::Rtp(transport)]);
 
                     // TODO: Convert 1.0/2.0 transports for UDP by splitting/combining IP:port and
@@ -389,6 +409,12 @@ impl Client {
                             .header(rtsp_types::headers::SESSION, session_id.as_str())
                             .typed_header::<Transports>(&transports)
                             .build(Body::default());
+
+                    if let Some(extra_headers) = extra_data.get::<client::ExtraHeaders>() {
+                        for (name, value) in extra_headers.iter() {
+                            resp.insert_header(name.clone(), value.clone());
+                        }
+                    }
 
                     // FIXME: Need to provide this from the media!
                     if req.version() == rtsp_types::Version::V2_0 {
@@ -473,7 +499,7 @@ impl Client {
                 );
             }
 
-            let (range, rtp_infos, _) = media
+            let (range, rtp_infos, extra_data) = media
                 .play(session_id.clone(), stream_id, range, extra_data.clone())
                 .await?;
 
@@ -488,11 +514,17 @@ impl Client {
                 rtp_infos
             };
 
-            let resp = rtsp_types::Response::builder(req.version(), rtsp_types::StatusCode::Ok)
+            let mut resp = rtsp_types::Response::builder(req.version(), rtsp_types::StatusCode::Ok)
                 .header(rtsp_types::headers::SESSION, session_id.as_str())
                 .typed_header::<Range>(&range)
                 .typed_header::<RtpInfos>(&rtp_infos)
                 .build(Body::default());
+
+            if let Some(extra_headers) = extra_data.get::<client::ExtraHeaders>() {
+                for (name, value) in extra_headers.iter() {
+                    resp.insert_header(name.clone(), value.clone());
+                }
+            }
 
             Ok(resp)
         };
@@ -555,14 +587,20 @@ impl Client {
                 );
             }
 
-            let (range, _) = media
+            let (range, extra_data) = media
                 .pause(session_id.clone(), stream_id, extra_data.clone())
                 .await?;
 
-            let resp = rtsp_types::Response::builder(req.version(), rtsp_types::StatusCode::Ok)
+            let mut resp = rtsp_types::Response::builder(req.version(), rtsp_types::StatusCode::Ok)
                 .header(rtsp_types::headers::SESSION, session_id.as_str())
                 .typed_header::<Range>(&range)
                 .build(Body::default());
+
+            if let Some(extra_headers) = extra_data.get::<client::ExtraHeaders>() {
+                for (name, value) in extra_headers.iter() {
+                    resp.insert_header(name.clone(), value.clone());
+                }
+            }
 
             Ok(resp)
         };

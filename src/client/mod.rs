@@ -69,6 +69,28 @@ impl std::ops::Deref for OriginalRequest {
     }
 }
 
+/// Extra headers.
+///
+/// Extra headers that should be attached to a response.
+///
+/// This is passed through the extra data in various places.
+#[derive(Debug, Clone)]
+pub struct ExtraHeaders(pub(self) rtsp_types::Headers);
+
+impl std::ops::Deref for ExtraHeaders {
+    type Target = rtsp_types::Headers;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<rtsp_types::Headers> for ExtraHeaders {
+    fn from(headers: rtsp_types::Headers) -> Self {
+        ExtraHeaders(headers)
+    }
+}
+
 pub trait Client: Send + 'static {
     /// Handle an RTSP request asynchronously.
     fn handle_request(
