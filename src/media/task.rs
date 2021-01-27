@@ -288,6 +288,7 @@ async fn task_fn<M: Media>(
                     session_id,
                     stream_id,
                     transports,
+                    accept_ranges,
                     extra_data,
                     ret,
                 } => {
@@ -304,7 +305,13 @@ async fn task_fn<M: Media>(
                         let _ = ret.send(Err(err));
                     } else {
                         let fut = media.add_transport(
-                            &mut ctx, client_id, session_id, stream_id, transports, extra_data,
+                            &mut ctx,
+                            client_id,
+                            session_id,
+                            stream_id,
+                            transports,
+                            accept_ranges,
+                            extra_data,
                         );
                         task::spawn(async move {
                             let res = fut.await;
@@ -412,6 +419,9 @@ async fn task_fn<M: Media>(
                     session_id,
                     stream_id,
                     range,
+                    seek_style,
+                    scale,
+                    speed,
                     extra_data,
                     ret,
                 } => {
@@ -432,6 +442,9 @@ async fn task_fn<M: Media>(
                             session_id.clone(),
                             stream_id,
                             range,
+                            seek_style,
+                            scale,
+                            speed,
                             extra_data,
                         );
                         task::spawn(async move {

@@ -199,8 +199,18 @@ impl Controller<Client> {
         session_id: server::SessionId,
         stream_id: super::StreamId,
         transports: rtsp_types::headers::Transports,
+        accept_ranges: Option<rtsp_types::headers::AcceptRanges>,
         extra_data: TypeMap,
-    ) -> Result<(rtsp_types::headers::RtpTransport, TypeMap), crate::error::Error> {
+    ) -> Result<
+        (
+            rtsp_types::headers::RtpTransport,
+            rtsp_types::headers::MediaProperties,
+            rtsp_types::headers::AcceptRanges,
+            Option<rtsp_types::headers::MediaRange>,
+            TypeMap,
+        ),
+        crate::error::Error,
+    > {
         let (sender, receiver) = oneshot::channel();
 
         if let Err(_) = self
@@ -211,6 +221,7 @@ impl Controller<Client> {
                     session_id,
                     stream_id,
                     transports,
+                    accept_ranges,
                     extra_data,
                     ret: sender,
                 }
@@ -289,11 +300,17 @@ impl Controller<Client> {
         session_id: server::SessionId,
         stream_id: Option<super::StreamId>,
         range: Option<rtsp_types::headers::Range>,
+        seek_style: Option<rtsp_types::headers::SeekStyle>,
+        scale: Option<rtsp_types::headers::Scale>,
+        speed: Option<rtsp_types::headers::Speed>,
         extra_data: TypeMap,
     ) -> Result<
         (
             rtsp_types::headers::Range,
             rtsp_types::headers::RtpInfos,
+            Option<rtsp_types::headers::SeekStyle>,
+            Option<rtsp_types::headers::Scale>,
+            Option<rtsp_types::headers::Speed>,
             TypeMap,
         ),
         crate::error::Error,
@@ -308,6 +325,9 @@ impl Controller<Client> {
                     session_id,
                     stream_id,
                     range,
+                    seek_style,
+                    scale,
+                    speed,
                     extra_data,
                     ret: sender,
                 }

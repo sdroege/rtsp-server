@@ -276,7 +276,9 @@ impl Client {
         req: client::OriginalRequest,
     ) -> Pin<Box<dyn Future<Output = Result<rtsp_types::Response<Body>, error::Error>> + Send>>
     {
-        use rtsp_types::headers::{PipelinedRequests, Session, Transport, Transports};
+        use rtsp_types::headers::{
+            AcceptRanges, PipelinedRequests, Session, Transport, Transports,
+        };
 
         let mut handle = ctx.handle();
 
@@ -294,6 +296,9 @@ impl Client {
                 .ok_or_else(|| {
                     error::Error::from(error::ErrorStatus::from(rtsp_types::StatusCode::BadRequest))
                 })?;
+            let accept_ranges = req.typed_header::<AcceptRanges>().map_err(|_| {
+                error::Error::from(error::ErrorStatus::from(rtsp_types::StatusCode::BadRequest))
+            })?;
             let uri = req.request_uri().ok_or_else(|| {
                 error::Error::from(error::ErrorStatus::from(rtsp_types::StatusCode::BadRequest))
             })?;
@@ -402,11 +407,12 @@ impl Client {
                     session_id.clone(),
                     stream_id,
                     transports,
+                    accept_ranges,
                     extra_data.clone(),
                 )
                 .await
             {
-                Ok((transport, extra_data)) => {
+                Ok((transport, media_properties, accept_ranges, media_range, extra_data)) => {
                     let transports = Transports::from(vec![Transport::Rtp(transport)]);
 
                     // TODO: Convert 1.0/2.0 transports for UDP by splitting/combining IP:port and
@@ -424,12 +430,12 @@ impl Client {
                         }
                     }
 
-                    // FIXME: Need to provide this from the media!
                     if req.version() == rtsp_types::Version::V2_0 {
-                        resp.insert_header(
-                            rtsp_types::headers::MEDIA_PROPERTIES,
-                            "No-Seeking,Immutable,Unlimited,Scale=\"1\"",
-                        );
+                        resp.insert_typed_header(&media_properties);
+                        resp.insert_typed_header(&accept_ranges);
+                        if let Some(media_range) = media_range {
+                            resp.insert_typed_header(&media_range);
+                        }
                     }
 
                     Ok(resp)
@@ -455,7 +461,7 @@ impl Client {
         req: client::OriginalRequest,
     ) -> Pin<Box<dyn Future<Output = Result<rtsp_types::Response<Body>, error::Error>> + Send>>
     {
-        use rtsp_types::headers::{Range, RtpInfos, Session};
+        use rtsp_types::headers::{Range, RtpInfos, Scale, SeekStyle, Session, Speed};
 
         let mut handle = ctx.handle();
 
@@ -463,6 +469,15 @@ impl Client {
             let mut extra_data = handle.default_extra_data_for_request(&req);
 
             let range = req.typed_header::<Range>().map_err(|_| {
+                error::Error::from(error::ErrorStatus::from(rtsp_types::StatusCode::BadRequest))
+            })?;
+            let seek_style = req.typed_header::<SeekStyle>().map_err(|_| {
+                error::Error::from(error::ErrorStatus::from(rtsp_types::StatusCode::BadRequest))
+            })?;
+            let scale = req.typed_header::<Scale>().map_err(|_| {
+                error::Error::from(error::ErrorStatus::from(rtsp_types::StatusCode::BadRequest))
+            })?;
+            let speed = req.typed_header::<Speed>().map_err(|_| {
                 error::Error::from(error::ErrorStatus::from(rtsp_types::StatusCode::BadRequest))
             })?;
             let session = req
@@ -507,8 +522,16 @@ impl Client {
                 );
             }
 
-            let (range, rtp_infos, extra_data) = media
-                .play(session_id.clone(), stream_id, range, extra_data.clone())
+            let (range, rtp_infos, seek_style, scale, speed, extra_data) = media
+                .play(
+                    session_id.clone(),
+                    stream_id,
+                    range,
+                    seek_style,
+                    scale,
+                    speed,
+                    extra_data.clone(),
+                )
                 .await?;
 
             let rtp_infos = if req.version() == rtsp_types::Version::V1_0 {
@@ -527,6 +550,20 @@ impl Client {
                 .typed_header::<Range>(&range)
                 .typed_header::<RtpInfos>(&rtp_infos)
                 .build(Body::default());
+
+            if req.version() == rtsp_types::Version::V2_0 {
+                if let Some(seek_style) = seek_style {
+                    resp.insert_typed_header(&seek_style);
+                }
+            }
+
+            if let Some(scale) = scale {
+                resp.insert_typed_header(&scale);
+            }
+
+            if let Some(speed) = speed {
+                resp.insert_typed_header(&speed);
+            }
 
             if let Some(extra_headers) = extra_data.get::<client::ExtraHeaders>() {
                 for (name, value) in extra_headers.iter() {

@@ -198,6 +198,7 @@ impl rtsp_server::media::Media for Media {
         session_id: rtsp_server::server::SessionId,
         stream_id: rtsp_server::media::StreamId,
         transports: rtsp_types::headers::Transports,
+        accept_ranges: Option<rtsp_types::headers::AcceptRanges>,
         _extra_data: rtsp_server::typemap::TypeMap,
     ) -> Pin<
         Box<
@@ -205,6 +206,9 @@ impl rtsp_server::media::Media for Media {
                     Output = Result<
                         (
                             rtsp_types::headers::RtpTransport,
+                            rtsp_types::headers::MediaProperties,
+                            rtsp_types::headers::AcceptRanges,
+                            Option<rtsp_types::headers::MediaRange>,
                             rtsp_server::typemap::TypeMap,
                         ),
                         Error,
@@ -263,6 +267,22 @@ impl rtsp_server::media::Media for Media {
             }
         };
 
+        // We only support NPT
+        // TODO: Need to return that in the error message as header
+        if let Some(accept_ranges) = accept_ranges {
+            if !accept_ranges
+                .iter()
+                .any(|r| *r == rtsp_types::headers::RangeUnit::Npt)
+            {
+                return Box::pin(async {
+                    Err(
+                        rtsp_server::error::ErrorStatus::from(rtsp_types::StatusCode::InvalidRange)
+                            .into(),
+                    )
+                });
+            }
+        }
+
         let handle = ctx.handle();
         let fut = async move {
             let mut data_receiver = Vec::<Box<dyn rtsp_server::client::DataReceiver>>::new();
@@ -320,7 +340,25 @@ impl rtsp_server::media::Media for Media {
             drop(rtp_sender);
             drop(rtcp_sender);
 
-            Ok((suitable_transport, Default::default()))
+            let media_properties = rtsp_types::headers::MediaProperties::builder()
+                .property(rtsp_types::headers::MediaProperty::NoSeeking)
+                .property(rtsp_types::headers::MediaProperty::TimeProgressing)
+                .property(rtsp_types::headers::MediaProperty::TimeDuration(0.0))
+                .build();
+
+            let accept_ranges = rtsp_types::headers::AcceptRanges::builder()
+                .range(rtsp_types::headers::RangeUnit::Npt)
+                .build();
+
+            let media_range = None;
+
+            Ok((
+                suitable_transport,
+                media_properties,
+                accept_ranges,
+                media_range,
+                Default::default(),
+            ))
         };
 
         Box::pin(fut)
@@ -333,6 +371,9 @@ impl rtsp_server::media::Media for Media {
         session_id: rtsp_server::server::SessionId,
         _stream_id: Option<rtsp_server::media::StreamId>,
         range: Option<rtsp_types::headers::Range>,
+        _seek_style: Option<rtsp_types::headers::SeekStyle>,
+        _scale: Option<rtsp_types::headers::Scale>,
+        _speed: Option<rtsp_types::headers::Speed>,
         extra_data: rtsp_server::typemap::TypeMap,
     ) -> Pin<
         Box<
@@ -341,6 +382,9 @@ impl rtsp_server::media::Media for Media {
                         (
                             rtsp_types::headers::Range,
                             rtsp_types::headers::RtpInfos,
+                            Option<rtsp_types::headers::SeekStyle>,
+                            Option<rtsp_types::headers::Scale>,
+                            Option<rtsp_types::headers::Speed>,
                             rtsp_server::typemap::TypeMap,
                         ),
                         Error,
@@ -446,6 +490,9 @@ impl rtsp_server::media::Media for Media {
             Ok((
                 Range::Npt(NptRange::From(NptTime::Seconds(0, None))),
                 rtp_infos,
+                None,
+                None,
+                None,
                 Default::default(),
             ))
         };

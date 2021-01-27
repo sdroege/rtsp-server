@@ -223,8 +223,8 @@ pub trait Media: Send + 'static {
         client_id: client::Id,
         session_id: server::SessionId,
         stream_id: StreamId,
-        // TODO: Accept-Ranges header
         transports: rtsp_types::headers::Transports,
+        accept_ranges: Option<rtsp_types::headers::AcceptRanges>,
         extra_data: TypeMap,
     ) -> Pin<
         Box<
@@ -232,8 +232,10 @@ pub trait Media: Send + 'static {
                     Output = Result<
                         (
                             rtsp_types::headers::RtpTransport,
+                            rtsp_types::headers::MediaProperties,
+                            rtsp_types::headers::AcceptRanges,
+                            Option<rtsp_types::headers::MediaRange>,
                             TypeMap,
-                            /* TODO: Accept-Ranges, Media-Properties */
                         ),
                         crate::error::Error,
                     >,
@@ -261,7 +263,6 @@ pub trait Media: Send + 'static {
     ) -> Pin<Box<dyn Future<Output = Result<(), crate::error::Error>> + Send>>;
 
     /// Start playback of the media at a given range.
-    // TODO: Seek-Style, Scale, Speed headers
     fn play(
         &mut self,
         ctx: &mut Context<Self>,
@@ -269,6 +270,9 @@ pub trait Media: Send + 'static {
         session_id: server::SessionId,
         stream_id: Option<StreamId>,
         range: Option<rtsp_types::headers::Range>,
+        seek_style: Option<rtsp_types::headers::SeekStyle>,
+        scale: Option<rtsp_types::headers::Scale>,
+        speed: Option<rtsp_types::headers::Speed>,
         extra_data: TypeMap,
     ) -> Pin<
         Box<
@@ -277,6 +281,9 @@ pub trait Media: Send + 'static {
                         (
                             rtsp_types::headers::Range,
                             rtsp_types::headers::RtpInfos,
+                            Option<rtsp_types::headers::SeekStyle>,
+                            Option<rtsp_types::headers::Scale>,
+                            Option<rtsp_types::headers::Speed>,
                             TypeMap,
                         ),
                         crate::error::Error,

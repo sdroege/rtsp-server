@@ -67,10 +67,20 @@ pub(super) enum ClientMessage {
         session_id: server::SessionId,
         stream_id: super::StreamId,
         transports: rtsp_types::headers::Transports,
+        accept_ranges: Option<rtsp_types::headers::AcceptRanges>,
         extra_data: TypeMap,
         #[derivative(Debug = "ignore")]
         ret: oneshot::Sender<
-            Result<(rtsp_types::headers::RtpTransport, TypeMap), crate::error::Error>,
+            Result<
+                (
+                    rtsp_types::headers::RtpTransport,
+                    rtsp_types::headers::MediaProperties,
+                    rtsp_types::headers::AcceptRanges,
+                    Option<rtsp_types::headers::MediaRange>,
+                    TypeMap,
+                ),
+                crate::error::Error,
+            >,
         >,
     },
     RemoveTransport {
@@ -93,6 +103,9 @@ pub(super) enum ClientMessage {
         session_id: server::SessionId,
         stream_id: Option<super::StreamId>,
         range: Option<rtsp_types::headers::Range>,
+        seek_style: Option<rtsp_types::headers::SeekStyle>,
+        scale: Option<rtsp_types::headers::Scale>,
+        speed: Option<rtsp_types::headers::Speed>,
         extra_data: TypeMap,
         #[derivative(Debug = "ignore")]
         ret: oneshot::Sender<
@@ -100,6 +113,9 @@ pub(super) enum ClientMessage {
                 (
                     rtsp_types::headers::Range,
                     rtsp_types::headers::RtpInfos,
+                    Option<rtsp_types::headers::SeekStyle>,
+                    Option<rtsp_types::headers::Scale>,
+                    Option<rtsp_types::headers::Speed>,
                     TypeMap,
                 ),
                 crate::error::Error,
@@ -187,7 +203,22 @@ pub(super) enum MediaMessage<M: super::Media + ?Sized> {
 #[derive(Debug, Clone)]
 pub enum PlayNotifyMessage {
     EndOfStream {
+        // TODO: Request-Status
         range: rtsp_types::headers::Range,
+        rtp_info: rtsp_types::headers::RtpInfos,
+        extra_data: TypeMap,
+    },
+    MediaPropertiesUpdate {
+        range: rtsp_types::headers::Range,
+        media_properties: rtsp_types::headers::MediaProperties,
+        media_range: rtsp_types::headers::MediaRange,
+        extra_data: TypeMap,
+    },
+    ScaleChange {
+        range: rtsp_types::headers::Range,
+        media_properties: rtsp_types::headers::MediaProperties,
+        media_range: rtsp_types::headers::MediaRange,
+        scale: f64,
         rtp_info: rtsp_types::headers::RtpInfos,
         extra_data: TypeMap,
     },
