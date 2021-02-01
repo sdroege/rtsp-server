@@ -61,7 +61,12 @@ pub struct Mounts {
     /// All match functions in the order they were defined.
     match_fns: HashMap<
         media_factory::Id,
-        Box<dyn Fn(&url::Url, &TypeMap) -> Option<PresentationURI> + Send + Sync + 'static>,
+        Box<
+            dyn Fn(&url::Url, &TypeMap) -> Option<(PresentationURI, TypeMap)>
+                + Send
+                + Sync
+                + 'static,
+        >,
     >,
 
     /// Spawned media factories with their controllers.
@@ -101,7 +106,12 @@ pub struct Builder {
     )>,
     match_fns: Vec<(
         media_factory::Id,
-        Box<dyn Fn(&url::Url, &TypeMap) -> Option<PresentationURI> + Send + Sync + 'static>,
+        Box<
+            dyn Fn(&url::Url, &TypeMap) -> Option<(PresentationURI, TypeMap)>
+                + Send
+                + Sync
+                + 'static,
+        >,
     )>,
 }
 
@@ -184,7 +194,7 @@ impl Builder {
                 let _ = presentation_uri.set_password(None);
                 presentation_uri.set_path(&path);
 
-                Some(PresentationURI::from(presentation_uri))
+                Some((PresentationURI::from(presentation_uri), Default::default()))
             }),
         ));
 
@@ -198,7 +208,7 @@ impl Builder {
     pub fn matches<
         MF: media_factory::MediaFactory,
         F: FnOnce(media_factory::Id) -> MF + Send + 'static,
-        G: Fn(&url::Url, &TypeMap) -> Option<PresentationURI> + Send + Sync + 'static,
+        G: Fn(&url::Url, &TypeMap) -> Option<(PresentationURI, TypeMap)> + Send + Sync + 'static,
     >(
         mut self,
         func: G,
@@ -236,11 +246,12 @@ impl Mounts {
     ) -> Option<(
         media_factory::Controller<media_factory::controller::Client>,
         PresentationURI,
+        TypeMap,
     )> {
         assert!(self.factory_fns.is_empty());
 
         for (id, match_fn) in &self.match_fns {
-            if let Some(presentation_uri) = match_fn(uri, &extra_data) {
+            if let Some((presentation_uri, extra_data)) = match_fn(uri, &extra_data) {
                 debug!(
                     "Match URI {} to media factory {} with presentation URI {}",
                     uri, id, presentation_uri
@@ -250,7 +261,7 @@ impl Mounts {
                     media_factory::controller::Client,
                 >::from_server_controller(
                     &factory_controller, client_id
-                ), presentation_uri));
+                ), presentation_uri, extra_data));
             }
         }
 

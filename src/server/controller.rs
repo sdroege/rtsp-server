@@ -177,6 +177,7 @@ impl Controller<Client> {
         (
             media_factory::Controller<media_factory::controller::Client>,
             super::PresentationURI,
+            TypeMap,
         ),
         crate::error::Error,
     > {

@@ -130,8 +130,11 @@ async fn task_fn(
                             debug!("Client {} looking for media factory at {}", client_id, uri);
 
                             if let Some(ref mounts) = ctx.mounts {
-                                if let Some((media_factory_controller, presentation_uri)) =
-                                    mounts.match_uri(client_id, &uri, extra_data)
+                                if let Some((
+                                    media_factory_controller,
+                                    presentation_uri,
+                                    extra_data,
+                                )) = mounts.match_uri(client_id, &uri, extra_data)
                                 {
                                     debug!(
                                         "Client {} found media factory {} for {} with presentation URI {}",
@@ -140,8 +143,11 @@ async fn task_fn(
                                         uri,
                                         presentation_uri,
                                     );
-                                    let _ =
-                                        ret.send(Ok((media_factory_controller, presentation_uri)));
+                                    let _ = ret.send(Ok((
+                                        media_factory_controller,
+                                        presentation_uri,
+                                        extra_data,
+                                    )));
                                 } else {
                                     debug!(
                                         "Client {} no media factory for {} available",

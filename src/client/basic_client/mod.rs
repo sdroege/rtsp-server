@@ -83,7 +83,7 @@ impl Client {
             } else if let Ok(Some(Session(session_id, _))) = req.typed_header::<Session>() {
                 let request_uri = req.request_uri().expect("no URI");
 
-                let (media_factory, presentation_uri) = handle
+                let (media_factory, presentation_uri, mounts_extra_data) = handle
                     .find_media_factory_for_uri(request_uri.clone(), extra_data.clone())
                     .await?;
 
@@ -104,6 +104,7 @@ impl Client {
 
                 let stream_id = media::extract_stream_id_from_uri(&presentation_uri, request_uri)?;
 
+                extra_data.extend(&mounts_extra_data);
                 extra_data.insert(presentation_uri);
                 extra_data.insert(session_id);
 
@@ -121,12 +122,13 @@ impl Client {
                 resp_allow = None;
                 resp_extra_data = Some(extra_data);
             } else if let Some(request_uri) = req.request_uri() {
-                let (mut media_factory, presentation_uri) = handle
+                let (mut media_factory, presentation_uri, mounts_extra_data) = handle
                     .find_media_factory_for_uri(request_uri.clone(), extra_data.clone())
                     .await?;
 
                 let stream_id = media::extract_stream_id_from_uri(&presentation_uri, request_uri)?;
 
+                extra_data.extend(&mounts_extra_data);
                 extra_data.insert(presentation_uri);
 
                 let (allow, sup, unsup, extra_data) = media_factory
@@ -222,7 +224,7 @@ impl Client {
                 // Here we could add additional information to be used in all requests below
                 let mut extra_data = handle.default_extra_data_for_request(&req);
 
-                let (mut media_factory, presentation_uri) = handle
+                let (mut media_factory, presentation_uri, mounts_extra_data) = handle
                     .find_media_factory_for_uri(request_uri.clone(), extra_data.clone())
                     .await?;
 
@@ -235,6 +237,7 @@ impl Client {
                     );
                 }
 
+                extra_data.extend(&mounts_extra_data);
                 extra_data.insert(presentation_uri.clone());
 
                 let (sdp, extra_data) = media_factory.describe(extra_data.clone()).await?;
@@ -334,7 +337,7 @@ impl Client {
                 {
                     let session_media_factory = media.find_media_factory().await?;
 
-                    let (media_factory, presentation_uri) = handle
+                    let (media_factory, presentation_uri, _mounts_extra_data) = handle
                         .find_media_factory_for_uri(uri.clone(), extra_data.clone())
                         .await?;
 
@@ -355,10 +358,11 @@ impl Client {
                     (media, presentation_uri, stream_id, session_id)
                 } else {
                     let create_session_fut = async {
-                        let (mut media_factory, presentation_uri) = handle
+                        let (mut media_factory, presentation_uri, mounts_extra_data) = handle
                             .find_media_factory_for_uri(uri.clone(), extra_data.clone())
                             .await?;
 
+                        extra_data.extend(&mounts_extra_data);
                         extra_data.insert(presentation_uri.clone());
 
                         let stream_id = media::extract_stream_id_from_uri(&presentation_uri, uri)?
@@ -501,7 +505,7 @@ impl Client {
 
             let session_media_factory = media.find_media_factory().await?;
 
-            let (media_factory, presentation_uri) = handle
+            let (media_factory, presentation_uri, _mounts_extra_data) = handle
                 .find_media_factory_for_uri(uri.clone(), extra_data.clone())
                 .await?;
 
@@ -611,7 +615,7 @@ impl Client {
 
             let session_media_factory = media.find_media_factory().await?;
 
-            let (media_factory, presentation_uri) = handle
+            let (media_factory, presentation_uri, _mounts_extra_data) = handle
                 .find_media_factory_for_uri(uri.clone(), extra_data.clone())
                 .await?;
 
@@ -685,7 +689,7 @@ impl Client {
 
             let session_media_factory = media.find_media_factory().await?;
 
-            let (media_factory, presentation_uri) = handle
+            let (media_factory, presentation_uri, _mounts_extra_data) = handle
                 .find_media_factory_for_uri(uri.clone(), extra_data.clone())
                 .await?;
 

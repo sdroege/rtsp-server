@@ -826,14 +826,17 @@ impl<C: Client + ?Sized> Context<C> {
         uri: url::Url,
         extra_data: TypeMap,
     ) -> impl Future<
-        Output = Result<(MediaFactoryHandle<C>, server::PresentationURI), crate::error::Error>,
+        Output = Result<
+            (MediaFactoryHandle<C>, server::PresentationURI, TypeMap),
+            crate::error::Error,
+        >,
     > + Send {
         let mut server_controller = self.server_controller.clone();
         let id = self.id;
         let controller_sender = self.controller_sender.clone();
         let client_handle = self.handle();
         let fut = async move {
-            let (media_factory_controller, presentation_uri) = server_controller
+            let (media_factory_controller, presentation_uri, extra_data) = server_controller
                 .find_media_factory_for_uri(uri.clone(), extra_data)
                 .await
                 .map_err(|err| {
@@ -862,6 +865,7 @@ impl<C: Client + ?Sized> Context<C> {
                     handle: client_handle,
                 },
                 presentation_uri,
+                extra_data,
             ))
         };
 
@@ -1473,7 +1477,8 @@ impl<C: Client + ?Sized> Handle<C> {
         &mut self,
         uri: url::Url,
         extra_data: TypeMap,
-    ) -> Result<(MediaFactoryHandle<C>, server::PresentationURI), crate::error::Error> {
+    ) -> Result<(MediaFactoryHandle<C>, server::PresentationURI, TypeMap), crate::error::Error>
+    {
         self.spawn(move |_, ctx| ctx.find_media_factory_for_uri(uri, extra_data))
             .await
             .map_err(|_| crate::error::Error::from(crate::error::InternalServerError))?
