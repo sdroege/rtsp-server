@@ -113,16 +113,20 @@ async fn task_fn<C: Client>(
                 // RTSP message stream
                 Right((Ok(res), _)) => Right(res),
                 Right((Err(_), _)) => {
-                    warn!("Client {}: Timed out", id);
-                    // TODO: Check if a session is actually active on this client and in
-                    // that case `continue`
-                    //
-                    // Convert into a timeout error from the RTSP stream below
-                    Right(Some(Err(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "Read timed out",
-                    )
-                    .into())))
+                    // FIXME: Dropping explicitly here shouldn't be needed but here we are.
+                    // Otherwise ctx is still borrowed mutably above by `stream_handler.poll()`.
+                    drop(res);
+                    if ctx.sessions.is_empty() {
+                        warn!("Client {}: Timed out", id);
+                        // Convert into a timeout error from the RTSP stream below
+                        Right(Some(Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "Read timed out",
+                        )
+                        .into())))
+                    } else {
+                        continue;
+                    }
                 }
             }
         };
