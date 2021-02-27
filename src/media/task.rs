@@ -200,7 +200,7 @@ async fn task_fn<M: Media>(
                             let _ = server_controller.finished().await;
                         });
 
-                        if M::AUTOMATIC_IDLE && !ctx.idle {
+                        if M::AUTOMATIC_IDLE && !ctx.idle && ctx.sessions.is_empty() {
                             trace!("Media {}: Idle {}", ctx.id, true);
                             ctx.idle = true;
                             let mut media_factory_controller = ctx.media_factory_controller.clone();
@@ -388,7 +388,7 @@ async fn task_fn<M: Media>(
                             .remove(&client_id)
                             .expect("client not found");
 
-                        if M::AUTOMATIC_IDLE && !ctx.idle {
+                        if M::AUTOMATIC_IDLE && !ctx.idle && ctx.sessions.is_empty() {
                             trace!("Media {}: Idle {}", ctx.id, true);
                             ctx.idle = true;
                             let mut media_factory_controller = ctx.media_factory_controller.clone();
