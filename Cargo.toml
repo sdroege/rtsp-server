@@ -15,7 +15,7 @@ glib = "0.10"
 gst = { version = "0.16", package = "gstreamer", features = ["v1_10"] }
 gst-app = { version = "0.16", package = "gstreamer-app" }
 #rtsp-types = "0.0.1"
-rtsp-types = { git = "https://github.com/sdroege/rtsp-types.git" }
+rtsp-types = { git = "https://github.com/sdroege/rtsp-types.git", branch="main" }
 sdp-types = "0.1.1"
 url = "2"
 chrono = "0.4"
