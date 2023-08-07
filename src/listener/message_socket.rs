@@ -102,7 +102,7 @@ pub(crate) fn async_read<R: AsyncRead + Unpin + Send>(
                             return Ok((Some(msg), write_pos, read_pos));
                         }
                         Err(rtsp_types::ParseError::Error) => return Err(ReadError::ParseError),
-                        Err(rtsp_types::ParseError::Incomplete) => {
+                        Err(rtsp_types::ParseError::Incomplete(_)) => {
                             if read_pos > 0 {
                                 // Not a complete message left, copy to the beginning and read more
                                 // data
